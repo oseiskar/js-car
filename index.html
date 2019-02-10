@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>JS car</title>
+</head>
+<body>
+<svg width="500" height="500">
+</svg>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/5.9.0/d3.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/5.4.2/math.min.js"></script>
+<script>
+
+function Car() {
+  this.length = 30;
+  this.width = 20;
+
+  this.mass = 10.0;
+  this.moi = 5.0;
+
+  //this.cmBalance = -0.2;
+
+  this.pos = [200, 200];
+  this.rot = Math.PI * 0.5;
+
+  this.v = [15, 100];
+  this.vrot = 1.0;
+
+  this.turningRadius = 100.0;
+
+  const M = [
+    [this.mass, 0, 0],
+    [0, this.mass, 0],
+    [0, 0, this.moi]
+  ];
+
+  const Minv = math.inv(M);
+
+  const maxForce = 1000; ////this.mass * 9.8 * 0.8;
+  //console.log(maxForce);
+  const restrictForce = x => Math.sign(x) * Math.min(Math.abs(x), maxForce);
+
+  function cross2d(x, y) {
+    return x[0]*y[1] - y[0]*x[1];
+  }
+
+  function norm(vec) {
+    return Math.sqrt(math.dot(vec, vec));
+  }
+
+  function normalize(vec) {
+    return math.multiply(vec, 1.0 / norm(vec));
+  }
+
+  function rot90cw(vec) {
+    return [vec[1], -vec[0]];
+  }
+
+  function rot90ccw(vec) {
+    return [-vec[1], vec[0]];
+  }
+
+  //console.log('-----begin-----');
+
+  this.move = (dt) => {
+    if (dt == 0.0) return;
+    //dt *= 0.1;
+
+    const v0 = [this.v[0], this.v[1], this.vrot];
+
+    //this.pos = math.add(this.pos, math.multiply(this.v, dt));
+    //this.rot += this.vrot * dt;
+
+    // local coordinates
+    const fwd = [Math.cos(this.rot), Math.sin(this.rot)];
+    const right = rot90cw(fwd);
+
+    const back = math.multiply(fwd, -this.length*0.5);
+    const front = math.multiply(fwd, this.length*0.5);
+
+    // solve velocity constraints
+    const turningCenter = math.add(back, math.multiply(right, this.turningRadius));
+    //const turningCenterPerp = rot90cw(math.subtract([0,0], turningCenter));
+
+    // solve forces (no slip)
+    const frontWheelAxis = normalize(math.subtract(turningCenter, front));
+    const backWheelAxis = right;
+
+    // TODO: this form does not conserve energy!
+    const KFperMdt = math.multiply(dt / this.mass, math.transpose([frontWheelAxis, backWheelAxis]));
+    const kTauPerMdt = math.multiply(dt / this.moi, [[cross2d(front, frontWheelAxis), cross2d(back, backWheelAxis)]]);
+    const tauVFront = math.transpose([rot90ccw(front)]);
+    const tauVBack = math.transpose([rot90ccw(back)]);
+
+    //console.log([frontWheelAxis]);
+    //console.log(math.add(KFperMdt, math.multiply(tauVFront, kTauPerMdt)));
+
+    const aFront = math.multiply(
+      [frontWheelAxis],
+      math.add(KFperMdt, math.multiply(tauVFront, kTauPerMdt)));
+    const aBack = math.multiply(
+      [backWheelAxis],
+      math.add(KFperMdt, math.multiply(tauVBack, kTauPerMdt)));
+
+    const bFront = -math.dot(frontWheelAxis, math.add(this.v, math.multiply(rot90ccw(front), this.vrot)));
+    const bBack = -math.dot(backWheelAxis, math.add(this.v, math.multiply(rot90ccw(back), this.vrot)));
+
+    const A = [aFront[0], aBack[0]];
+    const b = [bFront, bBack];
+
+    //console.log({dt, vrot: this.vrot});
+    //console.log({vrot: this.vrot, v: this.v, tcp: turningCenterPerp})
+    //console.log({A,b});
+
+    const forceCoeffs = math.lusolve(A, b);
+    //console.log(forceCoeffs);
+
+    let forceFront = restrictForce(forceCoeffs[0][0]);
+    let forceBack = restrictForce(forceCoeffs[1][0]);
+
+    //console.log({forceFront, forceBack});
+
+    forceFront = math.multiply(forceFront, frontWheelAxis);
+    forceBack = math.multiply(forceBack, backWheelAxis);
+
+    const totalForce = math.add(forceFront, forceBack);
+    const totalTorque = cross2d(front, forceFront) + cross2d(back, forceBack);
+
+    //console.log({totalForce, totalTorque});
+    //console.log(math.multiply(dt, math.multiply(Minv, [totalForce[0], totalForce[1], totalTorque])));
+
+    const deltaV = math.multiply(dt, math.multiply(Minv, [totalForce[0], totalForce[1], totalTorque]));
+    //const deltaV = vDiff;
+
+    //console.log(deltaV);
+
+    //console.log(`energy: ${E0}`);
+
+    // integrate position
+    this.pos = math.add(this.pos, math.multiply(this.v, dt));
+    this.rot += this.vrot * dt;
+
+    const [vx, vy, vrot] = math.add(v0, deltaV);
+    this.v = [vx, vy];
+    this.vrot = vrot;
+    //console.log(vrot);
+  };
+}
+
+function render(car, svg) {
+  svg.selectAll('g').remove();
+  svg.append('g')
+    .attr('transform', `translate(${car.pos[0]-car.width},${500-car.pos[1]}) rotate(${90-car.rot/Math.PI*180.0})`)
+    .append('rect')
+      .attr('x', -car.width*0.5)
+      .attr('y', -car.length*0.5)
+      .attr('width', car.width)
+      .attr('height', car.length)
+      .attr('fill', 'green');
+}
+
+
+const car = new Car();
+const svg = d3.select('svg');
+let t = new Date();
+
+function draw() {
+
+  const t0 = t;
+  t = new Date();
+  const dt = (t - t0) * 1e-3;
+  car.move(dt);
+
+  render(car, svg);
+  requestAnimationFrame(draw);
+}
+draw();
+
+</script>
+</body>
+</html>
