@@ -10,22 +10,37 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/5.4.2/math.min.js"></script>
 <script>
 
-function Car() {
-  this.length = 30;
-  this.width = 20;
+const LOG_SOME = (() => {
+  let counter = 0;
+  return function() {
+    if (counter++ < 1000) console.log(...arguments);
+  };
+})();
 
-  this.mass = 10.0;
-  this.moi = 5.0;
+function Car() {
+  this.length = 3;
+  this.width = 2;
+
+  this.mass = 800.0; // kg
+  this.moi = 1/12 * (this.length*this.length + this.width * this.width) * this.mass;
 
   //this.cmBalance = -0.2;
 
   this.pos = [200, 200];
   this.rot = Math.PI * 0.5;
 
-  this.v = [15, 100];
-  this.vrot = 1.0;
+  this.v = [0, 30];
+  this.vrot = 0.0; //1.0;
 
-  this.turningRadius = 100.0;
+  let wheelAngle = 0.0;
+
+  const MIN_TURNING_RADIUS = 50;
+  const MAX_WHEEL_ANGLE = Math.atan(this.length / MIN_TURNING_RADIUS);
+  const WHEEL_TURN_SPEED = 0.5; // 2.0; // radians / sec
+  const AIR_RES_COEFF = this.mass * 0.1;
+  const GRAVITY = 9.81;
+  const STATIC_FRICTION = 0.9;// * 30.0;
+  //const DYN_FRICTION = 0.3;
 
   const M = [
     [this.mass, 0, 0],
@@ -34,10 +49,6 @@ function Car() {
   ];
 
   const Minv = math.inv(M);
-
-  const maxForce = 1000; ////this.mass * 9.8 * 0.8;
-  //console.log(maxForce);
-  const restrictForce = x => Math.sign(x) * Math.min(Math.abs(x), maxForce);
 
   function cross2d(x, y) {
     return x[0]*y[1] - y[0]*x[1];
@@ -59,11 +70,34 @@ function Car() {
     return [-vec[1], vec[0]];
   }
 
-  //console.log('-----begin-----');
+  console.log('-----begin-----');
+
+  const curControls = {};
+
+  const keymap = {
+    37: 'left',
+    39: 'right',
+    38: 'throttle',
+    40: 'brake'
+  };
+
+  document.onkeydown = function(e) {
+    if (keymap[e.keyCode]) {
+      curControls[keymap[e.keyCode]] = true;
+    }
+  };
+
+  document.onkeyup = function(e) {
+    if (keymap[e.keyCode]) {
+      curControls[keymap[e.keyCode]] = false;
+    }
+  };
 
   this.move = (dt) => {
-    if (dt == 0.0) return;
+    if (dt == 0.0 || dt > 1.0) return;
     //dt *= 0.1;
+
+    //console.log(curControls);
 
     const v0 = [this.v[0], this.v[1], this.vrot];
 
@@ -77,52 +111,177 @@ function Car() {
     const back = math.multiply(fwd, -this.length*0.5);
     const front = math.multiply(fwd, this.length*0.5);
 
+    let targetWheelAngle = 0.0;
+    if (curControls.left) {
+      targetWheelAngle = MAX_WHEEL_ANGLE;
+    } else if (curControls.right) {
+      targetWheelAngle = -MAX_WHEEL_ANGLE;
+    } else {
+      targetWheelAngle = 0.0;
+    }
+
+    if (wheelAngle != targetWheelAngle) {
+      const diff = targetWheelAngle - wheelAngle;
+      const maxDelta = dt * WHEEL_TURN_SPEED;
+      wheelAngle += Math.sign(diff) * Math.min(Math.abs(diff), maxDelta);
+    }
+
+    let frontWheelAxis = right;
+    if (wheelAngle != 0.0) {
+      const turningRadius = this.length / Math.tan(wheelAngle);
+      const turningCenter = math.add(back, math.multiply(right, turningRadius));
+      //console.log(wheelAngle, turningRadius);
+      frontWheelAxis = normalize(math.subtract(turningCenter, front));
+    }
+
+    let thrust = 0.0;
+    const maxThrust = this.mass * 0.7 * GRAVITY * 0.5;
+    if (curControls.throttle) {
+      thrust = maxThrust;
+    }
+    else if (curControls.brake) {
+      thrust = -maxThrust;
+    }
+
     // solve velocity constraints
-    const turningCenter = math.add(back, math.multiply(right, this.turningRadius));
-    //const turningCenterPerp = rot90cw(math.subtract([0,0], turningCenter));
 
     // solve forces (no slip)
-    const frontWheelAxis = normalize(math.subtract(turningCenter, front));
     const backWheelAxis = right;
 
-    // TODO: this form does not conserve energy!
-    const KFperMdt = math.multiply(dt / this.mass, math.transpose([frontWheelAxis, backWheelAxis]));
-    const kTauPerMdt = math.multiply(dt / this.moi, [[cross2d(front, frontWheelAxis), cross2d(back, backWheelAxis)]]);
-    const tauVFront = math.transpose([rot90ccw(front)]);
-    const tauVBack = math.transpose([rot90ccw(back)]);
+    // external forces
+    const resistance = math.multiply(this.v, -AIR_RES_COEFF);
+    const externalForces = resistance;
 
-    //console.log([frontWheelAxis]);
-    //console.log(math.add(KFperMdt, math.multiply(tauVFront, kTauPerMdt)));
+    const solveForcesNoSlip = () => {
 
-    const aFront = math.multiply(
-      [frontWheelAxis],
-      math.add(KFperMdt, math.multiply(tauVFront, kTauPerMdt)));
-    const aBack = math.multiply(
-      [backWheelAxis],
-      math.add(KFperMdt, math.multiply(tauVBack, kTauPerMdt)));
+        //LOG_SOME({frontWheelAxis,backWheelAxis});
 
-    const bFront = -math.dot(frontWheelAxis, math.add(this.v, math.multiply(rot90ccw(front), this.vrot)));
-    const bBack = -math.dot(backWheelAxis, math.add(this.v, math.multiply(rot90ccw(back), this.vrot)));
+        // TODO: this form does not strictly conserve energy!
+        const KFperMdt = math.multiply(dt / this.mass, math.transpose([frontWheelAxis, backWheelAxis]));
+        const kTauPerMdt = math.multiply(dt / this.moi, [[cross2d(front, frontWheelAxis), cross2d(back, backWheelAxis)]]);
+        const tauVFront = math.transpose([rot90cw(front)]);
+        const tauVBack = math.transpose([rot90cw(back)]);
 
-    const A = [aFront[0], aBack[0]];
-    const b = [bFront, bBack];
+        //console.log([frontWheelAxis]);
+        //console.log(math.add(KFperMdt, math.multiply(tauVFront, kTauPerMdt)));
 
-    //console.log({dt, vrot: this.vrot});
-    //console.log({vrot: this.vrot, v: this.v, tcp: turningCenterPerp})
-    //console.log({A,b});
+        const aFront = math.multiply(
+          [frontWheelAxis],
+          math.add(KFperMdt, math.multiply(tauVFront, kTauPerMdt)));
+        const aBack = math.multiply(
+          [backWheelAxis],
+          math.add(KFperMdt, math.multiply(tauVBack, kTauPerMdt)));
 
-    const forceCoeffs = math.lusolve(A, b);
-    //console.log(forceCoeffs);
+        const thrustForce = math.multiply(thrust, fwd);
+        const F0perMdt = math.multiply(dt / this.mass, math.add(externalForces, thrustForce));
 
-    let forceFront = restrictForce(forceCoeffs[0][0]);
-    let forceBack = restrictForce(forceCoeffs[1][0]);
+        const bFront = -math.dot(frontWheelAxis, math.add(
+          F0perMdt,
+          this.v,
+          math.multiply(rot90cw(front), this.vrot))
+        );
+        const bBack = -math.dot(backWheelAxis, math.add(
+          F0perMdt,
+          this.v,
+          math.multiply(rot90cw(back), this.vrot))
+        );
 
-    //console.log({forceFront, forceBack});
+        const A = [aFront[0], aBack[0]];
+        const b = [bFront, bBack];
 
-    forceFront = math.multiply(forceFront, frontWheelAxis);
-    forceBack = math.multiply(forceBack, backWheelAxis);
+        //console.log({dt, vrot: this.vrot});
+        //console.log({vrot: this.vrot, v: this.v, tcp: turningCenterPerp})
+        //LOG_SOME({A,b});
 
-    const totalForce = math.add(forceFront, forceBack);
+        const forceCoeffs = math.lusolve(A, b);
+        //LOG_SOME(forceCoeffs);
+
+        const forceFront = forceCoeffs[0][0];
+        const forceBack = forceCoeffs[1][0];
+
+        //console.log({forceFront, forceBack});
+
+        return [
+          math.multiply(forceFront, frontWheelAxis),
+          math.add(math.multiply(forceBack, backWheelAxis), thrustForce)
+        ];
+    }
+
+    const solveForcesSemiSlip = (point, axis, externalF, externalT) => {
+        const KFperMdt = math.multiply(dt / this.mass, math.transpose([axis]));
+        const kTauPerMdt = math.multiply(dt / this.moi, [[cross2d(point, axis)]]);
+        const tauV = math.transpose([rot90cw(point)]);
+        const a = math.multiply([axis], math.add(KFperMdt, math.multiply(tauV, kTauPerMdt)));
+
+        //LOG_SOME({point, axis, externalF, externalT});
+
+        //const thrustForce = math.multiply(thrust, fwd);
+        const F0perMdt = math.multiply(dt / this.mass, externalF);
+        const bb = -math.dot(axis, math.add(
+          F0perMdt,
+          this.v,
+          math.multiply(rot90cw(point), this.vrot + dt * externalT / this.moi))
+        );
+
+        const A = [a[0]];
+        const b = [bb];
+
+        //console.log({dt, vrot: this.vrot});
+        //console.log({vrot: this.vrot, v: this.v, tcp: turningCenterPerp})
+        //console.log({A,b});
+
+        // TODO: no need for lusolve here
+        const forceCoeffs = math.lusolve(A, b);
+        return math.multiply(forceCoeffs[0][0], axis);
+    }
+
+    const solveForces = () => {
+      const maxForce = this.mass * GRAVITY * STATIC_FRICTION / 2.0;
+
+      let [forceFront, forceBack] = solveForcesNoSlip();
+      //console.log(forceFront, forceBack);
+      let backSlip = norm(forceBack) > maxForce;
+      let frontSlip = norm(forceFront) > maxForce;
+
+      //console.log(norm(forceFront), maxForce);
+
+      if (backSlip || frontSlip) {
+
+        LOG_SOME(`maxForce: ${maxForce} ${norm(forceFront)} ${norm(forceBack)}`)
+
+        const frontVel = math.add(this.v, math.multiply(rot90cw(front), this.vrot));
+        const backVel = math.add(this.v, math.multiply(rot90cw(back), this.vrot));
+        //const backSlippy = math.multiply(normalize(frontVel), -maxForce);
+        //const frontSlippy = math.multiply(normalize(backVel), -maxForce);
+        const backSlippy = math.multiply(normalize(forceBack), maxForce);
+        const frontSlippy = math.multiply(normalize(forceFront), maxForce);
+
+        forceFront = frontSlippy;
+        forceBack = backSlippy;
+
+        if (backSlip && !frontSlip) {
+          forceFront = solveForcesSemiSlip(front, frontWheelAxis, math.add(backSlippy, externalForces), cross2d(back, backSlippy));
+          frontSlip = norm(forceFront) > maxForce;
+          if (frontSlip) {
+            forceFront = frontSlippy;
+          }
+        }
+        else if (frontSlip && !backSlip) {
+          forceBack = solveForcesSemiSlip(back, backWheelAxis, math.add(frontSlippy, externalForces), cross2d(front, frontSlippy));
+          backSlip = norm(forceBack) > maxForce;
+          if (backSlip) {
+            forceBack = backSlippy;
+          }
+        }
+        LOG_SOME(frontSlip, backSlip);
+      }
+
+      return [forceFront, forceBack];
+    }
+
+    const [forceFront, forceBack] = solveForces();
+
+    const totalForce = math.add(externalForces, forceFront, forceBack);
     const totalTorque = cross2d(front, forceFront) + cross2d(back, forceBack);
 
     //console.log({totalForce, totalTorque});
@@ -149,7 +308,7 @@ function Car() {
 function render(car, svg) {
   svg.selectAll('g').remove();
   svg.append('g')
-    .attr('transform', `translate(${car.pos[0]-car.width},${500-car.pos[1]}) rotate(${90-car.rot/Math.PI*180.0})`)
+    .attr('transform', `translate(${car.pos[0]-car.width},${500-car.pos[1]}) rotate(${90-car.rot/Math.PI*180.0}) scale(10.0)`)
     .append('rect')
       .attr('x', -car.width*0.5)
       .attr('y', -car.length*0.5)
