@@ -34,7 +34,7 @@ function Car() {
   //this.cmBalance = -0.2;
 
   this.pos = [0, 0];
-  this.rot = -Math.PI * 0.5;
+  this.rot = Math.PI * 0.5;
 
   this.v = [0, 5 * dimScale];
   this.vrot = 0.0; //1.0;
@@ -106,28 +106,12 @@ function Car() {
     }
   };
 
-  this.move = (dt) => {
-    if (dt == 0.0 || dt > 1.0) return;
-
-    //console.log(curControls);
-
-    const v0 = [this.v[0], this.v[1], this.vrot];
-
-    //this.pos = math.add(this.pos, math.multiply(this.v, dt));
-    //this.rot += this.vrot * dt;
-
-    // local coordinates
-    const fwd = [Math.cos(this.rot), Math.sin(this.rot)];
-    const right = rot90cw(fwd);
-
-    const back = math.multiply(fwd, -this.dim.length*0.5);
-    const front = math.multiply(fwd, this.dim.length*0.5);
-
+  this.steer = (dt) => {
     // compute min cornering radius for this speed. This "auto-steering" is
     // just to make steering with arrow keys easier
     const SAFETY_MARGIN = 1.5;
     const minR = math.dot(this.v, this.v) / (STATIC_FRICTION * GRAVITY) * SAFETY_MARGIN;
-    const maxAngle = Math.min(MAX_WHEEL_ANGLE, Math.atan(this.dim.length / minR));
+    const maxAngle = Math.min(MAX_WHEEL_ANGLE, this.slip.back ? 1000 : Math.atan(this.dim.length / minR));
     //const sensitivity = Math.min(1.0 / (norm(this.v) / dimScale / 15.0), 1.0);
     //LOG_SOME(minR / this.dim.length);
 
@@ -147,9 +131,31 @@ function Car() {
       wheelAngle += Math.sign(diff) * Math.min(Math.abs(diff), maxDelta);
     }
 
-    this.frontWheelAngles = [0.0, 0.0];
+  };
+
+  this.move = (dt) => {
+    if (dt == 0.0 || dt > 1.0) return;
+
+    //console.log(curControls);
+
+    const v0 = [this.v[0], this.v[1], this.vrot];
+
+    //this.pos = math.add(this.pos, math.multiply(this.v, dt));
+    //this.rot += this.vrot * dt;
+
+    // local coordinates
+    const fwd = [Math.cos(this.rot), Math.sin(this.rot)];
+    const right = rot90cw(fwd);
+    //LOG_SOME(right);
+
+    const back = math.multiply(fwd, -this.dim.length*0.5);
+    const front = math.multiply(fwd, this.dim.length*0.5);
+
+    this.steer(dt);
 
     let frontWheelAxis = right;
+    this.frontWheelAngles = [0.0, 0.0];
+
     if (wheelAngle != 0.0) {
       const turningRadius = this.dim.length / Math.tan(wheelAngle);
       const turningCenter = math.add(back, math.multiply(right, turningRadius));
@@ -162,15 +168,23 @@ function Car() {
         const axis = normalize(math.subtract(turningCenter, pos));
         return Math.asin(math.dot(axis, fwd)) * Math.sign(turningRadius);
       });
+
+      /*LOG_SOME(wheelAngle);
+      LOG_SOME(turningRadius);
+      LOG_SOME(back);
+      LOG_SOME(right);
+      LOG_SOME(turningCenter);
+      LOG_SOME(frontWheelAxis);
+      LOG_SOME(this.pos);*/
     }
 
     let thrust = 0.0;
     const maxThrust = this.mass * 0.7 * GRAVITY * 0.5;
     if (curControls.throttle) {
-      thrust = -maxThrust;
+      thrust = maxThrust;
     }
     else if (curControls.brake) {
-      thrust = maxThrust;
+      thrust = -maxThrust;
     }
 
     // solve velocity constraints
@@ -182,6 +196,8 @@ function Car() {
     const resistance = math.multiply(this.v, -AIR_RES_COEFF);
     const externalForces = resistance;
 
+    const rotVec = rot90ccw;
+
     const solveForcesNoSlip = () => {
 
         //LOG_SOME({frontWheelAxis,backWheelAxis});
@@ -189,8 +205,8 @@ function Car() {
         // TODO: this form does not strictly conserve energy!
         const KFperMdt = math.multiply(dt / this.mass, math.transpose([frontWheelAxis, backWheelAxis]));
         const kTauPerMdt = math.multiply(dt / this.moi, [[cross2d(front, frontWheelAxis), cross2d(back, backWheelAxis)]]);
-        const tauVFront = math.transpose([rot90cw(front)]);
-        const tauVBack = math.transpose([rot90cw(back)]);
+        const tauVFront = math.transpose([rotVec(front)]);
+        const tauVBack = math.transpose([rotVec(back)]);
 
         //console.log([frontWheelAxis]);
         //console.log(math.add(KFperMdt, math.multiply(tauVFront, kTauPerMdt)));
@@ -203,24 +219,26 @@ function Car() {
           math.add(KFperMdt, math.multiply(tauVBack, kTauPerMdt)));
 
         const thrustForce = math.multiply(thrust, fwd);
+        //LOG_SOME(this.v);
+        //LOG_SOME(fwd);
+        //LOG_SOME(thrustForce);
         const F0perMdt = math.multiply(dt / this.mass, math.add(externalForces, thrustForce));
 
         const bFront = -math.dot(frontWheelAxis, math.add(
           F0perMdt,
           this.v,
-          math.multiply(rot90cw(front), this.vrot))
+          math.multiply(rotVec(front), this.vrot))
         );
         const bBack = -math.dot(backWheelAxis, math.add(
           F0perMdt,
           this.v,
-          math.multiply(rot90cw(back), this.vrot))
+          math.multiply(rotVec(back), this.vrot))
         );
 
         const A = [aFront[0], aBack[0]];
         const b = [bFront, bBack];
 
         //console.log({dt, vrot: this.vrot});
-        //console.log({vrot: this.vrot, v: this.v, tcp: turningCenterPerp})
         //LOG_SOME({A,b});
 
         const forceCoeffs = math.lusolve(A, b);
@@ -240,7 +258,7 @@ function Car() {
     const solveForcesSemiSlip = (point, axis, externalF, externalT) => {
         const KFperMdt = math.multiply(dt / this.mass, math.transpose([axis]));
         const kTauPerMdt = math.multiply(dt / this.moi, [[cross2d(point, axis)]]);
-        const tauV = math.transpose([rot90cw(point)]);
+        const tauV = math.transpose([rotVec(point)]);
         const a = math.multiply([axis], math.add(KFperMdt, math.multiply(tauV, kTauPerMdt)));
 
         //LOG_SOME({point, axis, externalF, externalT});
@@ -250,11 +268,10 @@ function Car() {
         const bb = -math.dot(axis, math.add(
           F0perMdt,
           this.v,
-          math.multiply(rot90cw(point), this.vrot + dt * externalT / this.moi))
+          math.multiply(rotVec(point), this.vrot + dt * externalT / this.moi))
         );
 
         //console.log({dt, vrot: this.vrot});
-        //console.log({vrot: this.vrot, v: this.v, tcp: turningCenterPerp})
         //console.log({A,b});
 
         // no need for lusolve here
@@ -280,11 +297,11 @@ function Car() {
 
       if (this.slip.back || this.slip.front) {
 
-        LOG_SOME(`maxForce: ${maxForceFront},${maxForceBack} ${norm(forceFront)},${norm(forceBack)}`);
+        //LOG_SOME(`maxForce: ${maxForceFront},${maxForceBack} ${norm(forceFront)},${norm(forceBack)}`);
         const maxForceSlip = this.mass * GRAVITY * DYNAMIC_FRICTION / 2.0;
 
-        const frontVel = math.add(this.v, math.multiply(rot90cw(front), this.vrot));
-        const backVel = math.add(this.v, math.multiply(rot90cw(back), this.vrot));
+        const frontVel = math.add(this.v, math.multiply(rotVec(front), this.vrot));
+        const backVel = math.add(this.v, math.multiply(rotVec(back), this.vrot));
         //const backSlippy = math.multiply(normalize(frontVel), -maxForceSlip);
         //const frontSlippy = math.multiply(normalize(backVel), -maxForceSlip);
         const backSlippy = math.multiply(normalize(forceBack), maxForceSlip);
@@ -307,7 +324,7 @@ function Car() {
             forceBack = backSlippy;
           }
         }
-        LOG_SOME(this.slip.front, this.slip.back);
+        //LOG_SOME(this.slip.front, this.slip.back);
       }
 
       return [forceFront, forceBack];
@@ -341,7 +358,8 @@ function Car() {
 
 function render(car, svg) {
   const s = 100.0;
-  const [origX, origY] = [250, 250]
+  const [szX, szY] = [500, 500];
+  const [origX, origY] = [szX/2, szY/2];
   svg.selectAll('g').remove();
 
   const carCoords = svg
@@ -349,7 +367,7 @@ function render(car, svg) {
     .attr('transform', `
       translate(
         ${car.pos[0]*s+origX},
-        ${500-car.pos[1]*s-origY})
+        ${szY-car.pos[1]*s-origY})
       rotate(${90-car.rot/Math.PI*180.0})`)
     .append('g')
     .attr('transform', `scale(${s})`);
@@ -363,7 +381,7 @@ function render(car, svg) {
       .attr('fill', 'green');
 
   [true, false].forEach(isFront => {
-    const endSign = isFront ? 1 : -1;
+    const endSign = isFront ? -1 : 1;
     const slip = isFront ? car.slip.front : car.slip.back;
     const color = slip ? 'gray' : 'black';
     const wheelW = car.dim.width * 0.2;
@@ -371,7 +389,7 @@ function render(car, svg) {
     const [rotLeft, rotRight] = car.frontWheelAngles;
 
     [-1,1].forEach(side => {
-      const rot = isFront ? (side > 0 ? rotLeft : rotRight) : 0.0;
+      const rot = isFront ? (side < 0 ? rotLeft : rotRight) : 0.0;
       carCoords
         .append('g')
         .attr('transform', `
