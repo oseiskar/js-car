@@ -21,26 +21,29 @@ function Car() {
   this.length = 3;
   this.width = 2;
 
-  this.mass = 800.0; // kg
+  this.mass = 1000.0; // kg
   this.moi = 1/12 * (this.length*this.length + this.width * this.width) * this.mass;
 
   //this.cmBalance = -0.2;
 
-  this.pos = [200, 200];
-  this.rot = Math.PI * 0.5;
+  this.pos = [0, 0];
+  this.rot = -Math.PI * 0.5;
 
-  this.v = [0, 30];
+  this.v = [0, 10];
   this.vrot = 0.0; //1.0;
+
+  this.backSlip = false;
+  this.frontSlip = false;
 
   let wheelAngle = 0.0;
 
-  const MIN_TURNING_RADIUS = 50;
+  const MIN_TURNING_RADIUS = 3;
   const MAX_WHEEL_ANGLE = Math.atan(this.length / MIN_TURNING_RADIUS);
   const WHEEL_TURN_SPEED = 0.5; // 2.0; // radians / sec
   const AIR_RES_COEFF = this.mass * 0.1;
   const GRAVITY = 9.81;
-  const STATIC_FRICTION = 0.9;// * 30.0;
-  //const DYN_FRICTION = 0.3;
+  const STATIC_FRICTION = 0.9;
+  const DYNAMIC_FRICTION = 0.5;
 
   const M = [
     [this.mass, 0, 0],
@@ -113,9 +116,9 @@ function Car() {
 
     let targetWheelAngle = 0.0;
     if (curControls.left) {
-      targetWheelAngle = MAX_WHEEL_ANGLE;
-    } else if (curControls.right) {
       targetWheelAngle = -MAX_WHEEL_ANGLE;
+    } else if (curControls.right) {
+      targetWheelAngle = MAX_WHEEL_ANGLE;
     } else {
       targetWheelAngle = 0.0;
     }
@@ -137,10 +140,10 @@ function Car() {
     let thrust = 0.0;
     const maxThrust = this.mass * 0.7 * GRAVITY * 0.5;
     if (curControls.throttle) {
-      thrust = maxThrust;
+      thrust = -maxThrust;
     }
     else if (curControls.brake) {
-      thrust = -maxThrust;
+      thrust = maxThrust;
     }
 
     // solve velocity constraints
@@ -236,44 +239,48 @@ function Car() {
     }
 
     const solveForces = () => {
-      const maxForce = this.mass * GRAVITY * STATIC_FRICTION / 2.0;
+      const backFriction = this.backSlip ? DYNAMIC_FRICTION : STATIC_FRICTION;
+      const frontFriction = this.frontSlip ? DYNAMIC_FRICTION : STATIC_FRICTION;
+      const maxForceBack = this.mass * GRAVITY * backFriction / 2.0;
+      const maxForceFront = this.mass * GRAVITY * frontFriction / 2.0;
 
       let [forceFront, forceBack] = solveForcesNoSlip();
       //console.log(forceFront, forceBack);
-      let backSlip = norm(forceBack) > maxForce;
-      let frontSlip = norm(forceFront) > maxForce;
+      this.backSlip = norm(forceBack) > maxForceBack;
+      this.frontSlip = norm(forceFront) > maxForceFront;
 
       //console.log(norm(forceFront), maxForce);
 
-      if (backSlip || frontSlip) {
+      if (this.backSlip || this.frontSlip) {
 
-        LOG_SOME(`maxForce: ${maxForce} ${norm(forceFront)} ${norm(forceBack)}`)
+        LOG_SOME(`maxForce: ${maxForceFront},${maxForceBack} ${norm(forceFront)},${norm(forceBack)}`);
+        const maxForceSlip = this.mass * GRAVITY * DYNAMIC_FRICTION / 2.0;
 
         const frontVel = math.add(this.v, math.multiply(rot90cw(front), this.vrot));
         const backVel = math.add(this.v, math.multiply(rot90cw(back), this.vrot));
         //const backSlippy = math.multiply(normalize(frontVel), -maxForce);
         //const frontSlippy = math.multiply(normalize(backVel), -maxForce);
-        const backSlippy = math.multiply(normalize(forceBack), maxForce);
-        const frontSlippy = math.multiply(normalize(forceFront), maxForce);
+        const backSlippy = math.multiply(normalize(forceBack), maxForceSlip);
+        const frontSlippy = math.multiply(normalize(forceFront), maxForceSlip);
 
         forceFront = frontSlippy;
         forceBack = backSlippy;
 
-        if (backSlip && !frontSlip) {
+        if (this.backSlip && !this.frontSlip) {
           forceFront = solveForcesSemiSlip(front, frontWheelAxis, math.add(backSlippy, externalForces), cross2d(back, backSlippy));
-          frontSlip = norm(forceFront) > maxForce;
-          if (frontSlip) {
+          this.frontSlip = norm(forceFront) > maxForceFront;
+          if (this.frontSlip) {
             forceFront = frontSlippy;
           }
         }
-        else if (frontSlip && !backSlip) {
+        else if (this.frontSlip && !this.backSlip) {
           forceBack = solveForcesSemiSlip(back, backWheelAxis, math.add(frontSlippy, externalForces), cross2d(front, frontSlippy));
-          backSlip = norm(forceBack) > maxForce;
-          if (backSlip) {
+          this.backSlip = norm(forceBack) > maxForceBack;
+          if (this.backSlip) {
             forceBack = backSlippy;
           }
         }
-        LOG_SOME(frontSlip, backSlip);
+        LOG_SOME(this.frontSlip, this.backSlip);
       }
 
       return [forceFront, forceBack];
@@ -306,15 +313,42 @@ function Car() {
 }
 
 function render(car, svg) {
+  const s = 10.0;
+  const [origX, origY] = [250, 250]
   svg.selectAll('g').remove();
-  svg.append('g')
-    .attr('transform', `translate(${car.pos[0]-car.width},${500-car.pos[1]}) rotate(${90-car.rot/Math.PI*180.0}) scale(10.0)`)
+
+  const carCoords = svg
+    .append('g')
+    .attr('transform', `
+      translate(
+        ${car.pos[0]*s+origX},
+        ${500-car.pos[1]*s-origY})
+      rotate(${90-car.rot/Math.PI*180.0})`)
+    .append('g')
+    .attr('transform', `scale(${s})`);
+
+  carCoords
     .append('rect')
       .attr('x', -car.width*0.5)
       .attr('y', -car.length*0.5)
       .attr('width', car.width)
       .attr('height', car.length)
       .attr('fill', 'green');
+
+  [true, false].forEach(isFront => {
+    const endSign = isFront ? 1 : -1;
+    const slip = isFront ? car.frontSlip : car.backSlip;
+    const color = slip ? 'red' : (isFront ? 'gray' : 'black');
+
+    [-1,1].forEach(side => {
+      carCoords
+        .append('g')
+        .attr('transform', `translate(${car.width*0.5*side}, ${car.length*0.5*endSign})`)
+        .append('circle')
+          .attr('r', car.width*0.2)
+          .attr('fill', color);
+    });
+  });
 }
 
 
