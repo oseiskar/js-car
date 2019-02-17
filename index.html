@@ -18,12 +18,15 @@ const LOG_SOME = (() => {
 })();
 
 function Car() {
+
+  const dimScale = 0.05;
+
   this.dim = {
-    length: 3,
-    width: 2
+    length: 3 * dimScale,
+    width: 2 * dimScale
   };
 
-  this.mass = 1000.0; // kg
+  this.mass = 1000.0 * dimScale**3; // kg
   this.moi = 1/12 * (
     this.dim.length * this.dim.length +
     this.dim.width * this.dim.width) * this.mass;
@@ -33,7 +36,7 @@ function Car() {
   this.pos = [0, 0];
   this.rot = -Math.PI * 0.5;
 
-  this.v = [0, 10];
+  this.v = [0, 5 * dimScale];
   this.vrot = 0.0; //1.0;
 
   this.slip = {
@@ -44,13 +47,13 @@ function Car() {
   let wheelAngle = 0.0;
   this.frontWheelAngles = [0, 0];
 
-  const MIN_TURNING_RADIUS = 3;
+  const MIN_TURNING_RADIUS = this.dim.length;
   const MAX_WHEEL_ANGLE = Math.atan(this.dim.length / MIN_TURNING_RADIUS);
-  const WHEEL_TURN_SPEED = 0.5; // 2.0; // radians / sec
-  const AIR_RES_COEFF = this.mass * 0.1;
+  const WHEEL_TURN_SPEED = 2.0; // 2.0; // radians / sec
+  const AIR_RES_COEFF = this.mass * 0.3;
   const GRAVITY = 9.81;
-  const STATIC_FRICTION = 0.9;
-  const DYNAMIC_FRICTION = 0.5;
+  const STATIC_FRICTION = 0.99;
+  const DYNAMIC_FRICTION = 0.2;
 
   const M = [
     [this.mass, 0, 0],
@@ -104,9 +107,7 @@ function Car() {
   };
 
   this.move = (dt) => {
-    //dt *= 3.0;
     if (dt == 0.0 || dt > 1.0) return;
-    //dt *= 0.1;
 
     //console.log(curControls);
 
@@ -122,17 +123,26 @@ function Car() {
     const back = math.multiply(fwd, -this.dim.length*0.5);
     const front = math.multiply(fwd, this.dim.length*0.5);
 
+    // compute min cornering radius for this speed. This "auto-steering" is
+    // just to make steering with arrow keys easier
+    const SAFETY_MARGIN = 1.5;
+    const minR = math.dot(this.v, this.v) / (STATIC_FRICTION * GRAVITY) * SAFETY_MARGIN;
+    const maxAngle = Math.min(MAX_WHEEL_ANGLE, Math.atan(this.dim.length / minR));
+    //const sensitivity = Math.min(1.0 / (norm(this.v) / dimScale / 15.0), 1.0);
+    //LOG_SOME(minR / this.dim.length);
+
     let targetWheelAngle = 0.0;
     if (curControls.left) {
-      targetWheelAngle = -MAX_WHEEL_ANGLE;
+      targetWheelAngle = -maxAngle;
     } else if (curControls.right) {
-      targetWheelAngle = MAX_WHEEL_ANGLE;
+      targetWheelAngle = maxAngle;
     } else {
       targetWheelAngle = 0.0;
     }
 
     if (wheelAngle != targetWheelAngle) {
       const diff = targetWheelAngle - wheelAngle;
+      //console.log(sensitivity);
       const maxDelta = dt * WHEEL_TURN_SPEED;
       wheelAngle += Math.sign(diff) * Math.min(Math.abs(diff), maxDelta);
     }
@@ -243,16 +253,16 @@ function Car() {
           math.multiply(rot90cw(point), this.vrot + dt * externalT / this.moi))
         );
 
-        const A = [a[0]];
-        const b = [bb];
-
         //console.log({dt, vrot: this.vrot});
         //console.log({vrot: this.vrot, v: this.v, tcp: turningCenterPerp})
         //console.log({A,b});
 
-        // TODO: no need for lusolve here
-        const forceCoeffs = math.lusolve(A, b);
-        return math.multiply(forceCoeffs[0][0], axis);
+        // no need for lusolve here
+        //const A = [a[0]];
+        //const b = [bb];
+        //const forceCoeffs = math.lusolve(A, b);
+        const forceCoeff = bb / a[0][0];
+        return math.multiply(forceCoeff, axis);
     }
 
     const solveForces = () => {
@@ -275,8 +285,8 @@ function Car() {
 
         const frontVel = math.add(this.v, math.multiply(rot90cw(front), this.vrot));
         const backVel = math.add(this.v, math.multiply(rot90cw(back), this.vrot));
-        //const backSlippy = math.multiply(normalize(frontVel), -maxForce);
-        //const frontSlippy = math.multiply(normalize(backVel), -maxForce);
+        //const backSlippy = math.multiply(normalize(frontVel), -maxForceSlip);
+        //const frontSlippy = math.multiply(normalize(backVel), -maxForceSlip);
         const backSlippy = math.multiply(normalize(forceBack), maxForceSlip);
         const frontSlippy = math.multiply(normalize(forceFront), maxForceSlip);
 
@@ -330,7 +340,7 @@ function Car() {
 }
 
 function render(car, svg) {
-  const s = 10.0;
+  const s = 100.0;
   const [origX, origY] = [250, 250]
   svg.selectAll('g').remove();
 
