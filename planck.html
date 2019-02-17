@@ -1,0 +1,82 @@
+<html><body>
+  <script src="https://cdn.jsdelivr.net/npm/planck-js@0.2/dist/planck-with-testbed.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/5.4.2/math.min.js"></script>
+  <script src="car.js"></script>
+  <script>
+    planck.testbed(function(testbed) {
+      /*var world = planck.World();
+      // rest of your code
+      return world; // make sure you return the world*/
+
+
+      const pl = planck, Vec2 = pl.Vec2;
+
+      const world = pl.World();
+
+      const bar = world.createBody();
+      bar.createFixture(pl.Edge(Vec2(-20, 5), Vec2(20, 5)));
+      bar.setAngle(0.2);
+
+      const carController = new Car();
+      const car = world.createBody().setDynamic();
+      car.createFixture(pl.Box(carController.dim.width, carController.dim.length));
+      car.setPosition(Vec2(0,0));
+      car.setMassData({
+        mass: carController.mass,
+        I: carController.moi,
+        center: Vec2()
+      });
+      car.setAngle(carController.rot - Math.PI/2);
+
+      for (let i = -2; i <= 2; i++) {
+        for (let j = -2; j <= 2; j++) {
+          const box = world.createBody({
+            linearDamping: 0.2
+          }).setDynamic();
+          someBox = box;
+          box.createFixture(pl.Box(0.5, 0.5));
+          box.setPosition(Vec2(i * 1, -j * 1 + 20));
+          box.setMassData({
+            mass : 1,
+            center : Vec2(),
+            I : 1
+          })
+        }
+      }
+
+      function getControls() {
+        const { left, right, up: throttle, down: brake } = testbed.activeKeys;
+        return { left, right, throttle, brake };
+      }
+
+      function setCarControllerState() {
+          const { x: vx, y: vy } = car.getLinearVelocity();
+          carController.v = [vx, vy];
+          carController.rot = car.getAngle() + Math.PI/2;
+          carController.vrot = car.getAngularVelocity();
+      }
+
+      testbed.step = function(dt) {
+
+        setCarControllerState();
+
+        const v0 = [...carController.v];
+        const vrot0 = carController.vrot;
+        //LOG_SOME(v0);
+        carController.move(dt * 1e-3, getControls());
+        const [impulseX, impulseY] = math.multiply(
+          math.subtract([...carController.v], v0),
+          carController.mass);
+        const angImpulse = (carController.vrot - vrot0) * carController.moi;
+
+        car.applyAngularImpulse(angImpulse, false);
+        car.applyLinearImpulse(
+          { x: impulseX, y: impulseY },
+          car.getWorldPoint(Vec2(0,0)),
+          true);
+      }
+
+      return world;
+    });
+  </script>
+</body></html>

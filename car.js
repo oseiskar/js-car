@@ -1,21 +1,23 @@
+
+// debugging
+const LOG_SOME = (() => {
+  let counter = 0;
+  return function() {
+    if (counter++ < 1000) console.log(...arguments);
+  };
+})();
+
 function Car() {
 
-  // debugging
-  const LOG_SOME = (() => {
-    let counter = 0;
-    return function() {
-      if (counter++ < 1000) console.log(...arguments);
-    };
-  })();
-
-  const dimScale = 0.1;
+  const dimScale = 0.2;
+  //this.tScale = 3.0;
 
   this.dim = {
     length: 3 * dimScale,
     width: 2 * dimScale
   };
 
-  this.mass = 1000.0 * dimScale**3; // kg
+  this.mass = 300.0 * dimScale**3; // kg
   this.moi = 1/12 * (
     this.dim.length * this.dim.length +
     this.dim.width * this.dim.width) * this.mass;
@@ -101,6 +103,7 @@ function Car() {
 
   this.move = (dt, curControls) => {
     if (dt == 0.0 || dt > 1.0) return;
+    //dt *= this.tScale;
 
     //console.log(curControls);
 
