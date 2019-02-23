@@ -9,6 +9,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/5.9.0/d3.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/5.4.2/math.min.js"></script>
 <script src="car.js"></script>
+<script src="track.js"></script>
+<script src="render.js"></script>
 <script>
 
 const curControls = {};
@@ -32,59 +34,11 @@ document.onkeyup = function(e) {
   }
 };
 
-function render(car, svg) {
-  const s = 100.0;
-  const [szX, szY] = [500, 500];
-  const [origX, origY] = [szX/2, szY/2];
-  svg.selectAll('g').remove();
-
-  const carCoords = svg
-    .append('g')
-    .attr('transform', `
-      translate(
-        ${car.pos[0]*s+origX},
-        ${szY-car.pos[1]*s-origY})
-      rotate(${90-car.rot/Math.PI*180.0})`)
-    .append('g')
-    .attr('transform', `scale(${s})`);
-
-  carCoords
-    .append('rect')
-      .attr('x', -car.dim.width*0.5)
-      .attr('y', -car.dim.length*0.5)
-      .attr('width', car.dim.width)
-      .attr('height', car.dim.length)
-      .attr('fill', 'green');
-
-  [true, false].forEach(isFront => {
-    const endSign = isFront ? -1 : 1;
-    const slip = isFront ? car.slip.front : car.slip.back;
-    const color = slip ? 'gray' : 'black';
-    const wheelW = car.dim.width * 0.2;
-    const wheelL = car.dim.width * 0.4;
-    const [rotLeft, rotRight] = car.frontWheelAngles;
-
-    [-1,1].forEach(side => {
-      const rot = isFront ? (side < 0 ? rotLeft : rotRight) : 0.0;
-      carCoords
-        .append('g')
-        .attr('transform', `
-          translate(${car.dim.width*0.5*side}, ${car.dim.length*0.5*endSign})
-          rotate(${-rot/Math.PI*180.0})`)
-        .append('rect')
-          .attr('x', -wheelW*0.5)
-          .attr('y', -wheelL*0.5)
-          .attr('width', wheelW)
-          .attr('height', wheelL)
-          .attr('fill', color);
-    });
-  });
-}
-
 console.log('-----begin-----');
 
-const car = new Car();
+const track = new Track({ widthMeters: 5, heightMeters: 4 });
 const svg = d3.select('svg');
+const renderer = buildTrackRenderer(track, svg, 500, 500);
 let t = new Date();
 
 function draw() {
@@ -92,9 +46,8 @@ function draw() {
   const t0 = t;
   t = new Date();
   const dt = (t - t0) * 1e-3;
-  car.move(dt, curControls);
-
-  render(car, svg);
+  track.move(dt, curControls);
+  renderer();
   requestAnimationFrame(draw);
 }
 draw();
