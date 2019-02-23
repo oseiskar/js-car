@@ -9,37 +9,43 @@ function buildCarRenderer(car, trackCoords) {
         .attr('height', car.dim.length)
         .attr('fill', 'green');
 
+  const wheels = [[true,-1], [true,1], [false,-1], [false,1]].map(([isFront, side]) => {
+    const coords = carCoords.append('g');
+    const wheelW = car.dim.width * 0.2;
+    const wheelL = car.dim.width * 0.4;
+    const rect = coords.append('rect')
+      .attr('x', -wheelW*0.5)
+      .attr('y', -wheelL*0.5)
+      .attr('width', wheelW)
+      .attr('height', wheelL);
+
+    return {
+      coords,
+      rect,
+      isFront,
+      side,
+      x: car.dim.width * 0.5 * side,
+      y: car.dim.length * 0.5 * (isFront ? -1 : 1)
+    };
+  });
+
   return () => {
+    const [rotLeft, rotRight] = car.frontWheelAngles;
+
     // car coordinate system
     carCoords.attr('transform', `
       translate(${car.pos[0]}, ${car.pos[1]})
       rotate(${car.rot/Math.PI*180.0 + 90})`);
 
-    carCoords.selectAll('g').remove();
+    wheels.forEach(wheel => {
+      const rot = wheel.isFront ? (wheel.side > 0 ? rotLeft : rotRight) : 0.0;
+      wheel.coords.attr('transform', `
+        translate(${wheel.x}, ${wheel.y})
+        rotate(${rot/Math.PI*180.0})`);
 
-    // wheels
-    [true, false].forEach(isFront => {
-      const endSign = isFront ? -1 : 1;
-      const slip = isFront ? car.slip.front : car.slip.back;
+      const slip = wheel.isFront ? car.slip.front : car.slip.back;
       const color = slip ? 'gray' : 'black';
-      const wheelW = car.dim.width * 0.2;
-      const wheelL = car.dim.width * 0.4;
-      const [rotLeft, rotRight] = car.frontWheelAngles;
-
-      [-1,1].forEach(side => {
-        const rot = isFront ? (side > 0 ? rotLeft : rotRight) : 0.0;
-        carCoords
-          .append('g')
-          .attr('transform', `
-            translate(${car.dim.width*0.5*side}, ${car.dim.length*0.5*endSign})
-            rotate(${rot/Math.PI*180.0})`)
-          .append('rect')
-            .attr('x', -wheelW*0.5)
-            .attr('y', -wheelL*0.5)
-            .attr('width', wheelW)
-            .attr('height', wheelL)
-            .attr('fill', color);
-      });
+      wheel.rect.attr('fill', color);
     });
   };
 }
