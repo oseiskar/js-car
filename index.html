@@ -36,7 +36,7 @@ document.onkeyup = function(e) {
 
 console.log('-----begin-----');
 
-const scale = 0.5;
+const scale = 0.3;
 const track = new Track({ widthMeters: 5 / scale, heightMeters: 4 / scale });
 const svg = d3.select('svg');
 const renderer = buildTrackRenderer(track, svg,

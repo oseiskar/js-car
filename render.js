@@ -54,13 +54,32 @@ function buildTrackRenderer(track, svg, width, height) {
     .append('g').attr('transform', `translate(${width/2}, ${height/2})`)
     .append('g').attr('transform', `scale(${scale})`);
 
-  const boundary = trackCoords.append('rect')
+  // boundary
+  trackCoords.append('rect')
     .attr('x', -metricSize.width/2)
     .attr('y', -metricSize.height/2)
     .attr('width', metricSize.width)
     .attr('height', metricSize.height)
     .attr('stroke', 'black').attr('stroke-width', 1 / scale)
     //.attr('fill', '#f0f0f0');
+    .attr('fill', 'none');
+
+  // track
+  const trackPoints = track.points; // close loop
+  const trackLine = d3.line()
+    .x(d => d[0]).y(d => d[1])
+    .curve(d3.curveLinearClosed)(trackPoints);
+  trackCoords.append('path')
+    .attr('d', trackLine)
+    .attr('stroke', '#dddddd')
+    .attr('stroke-width', track.trackWidth) // meters
+    .attr('fill', 'none');
+
+  trackCoords.append('path')
+    .attr('d', trackLine)
+    .attr('stroke', '#ffff00')
+    .attr('stroke-width', 2.0 / scale)
+    .attr('stroke-dasharray', `0.2 0.3`)
     .attr('fill', 'none');
 
   const carRenderer = buildCarRenderer(track.car, trackCoords);
