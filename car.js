@@ -40,7 +40,7 @@ function Car() {
 
   const MIN_TURNING_RADIUS = this.dim.length;
   const MAX_WHEEL_ANGLE = Math.atan(this.dim.length / MIN_TURNING_RADIUS);
-  const WHEEL_TURN_SPEED = 2.0; // 2.0; // radians / sec
+  const WHEEL_TURN_SPEED = 1.5; // radians / sec
   const AIR_RES_COEFF = this.mass * 0.3;
   const GRAVITY = 9.81;
   const STATIC_FRICTION = 0.99;
@@ -74,10 +74,12 @@ function Car() {
     return [-vec[1], vec[0]];
   }
 
+  const rotVec = rot90ccw;
+
   this.steer = (dt, curControls) => {
     // compute min cornering radius for this speed. This "auto-steering" is
     // just to make steering with arrow keys easier
-    const SAFETY_MARGIN = 1.5;
+    const SAFETY_MARGIN = 1.7;
     const minR = math.dot(this.v, this.v) / (STATIC_FRICTION * GRAVITY) * SAFETY_MARGIN;
     const maxAngle = Math.min(MAX_WHEEL_ANGLE, this.slip.back ? 1000 : Math.atan(this.dim.length / minR));
     //const sensitivity = Math.min(1.0 / (norm(this.v) / dimScale / 15.0), 1.0);
@@ -165,91 +167,89 @@ function Car() {
     const resistance = math.multiply(this.v, -AIR_RES_COEFF);
     const externalForces = resistance;
 
-    const rotVec = rot90ccw;
-
     const solveForcesNoSlip = () => {
 
-        //LOG_SOME({frontWheelAxis,backWheelAxis});
+      //LOG_SOME({frontWheelAxis,backWheelAxis});
 
-        // TODO: this form does not strictly conserve energy!
-        const KFperMdt = math.multiply(dt / this.mass, math.transpose([frontWheelAxis, backWheelAxis]));
-        const kTauPerMdt = math.multiply(dt / this.moi, [[cross2d(front, frontWheelAxis), cross2d(back, backWheelAxis)]]);
-        const tauVFront = math.transpose([rotVec(front)]);
-        const tauVBack = math.transpose([rotVec(back)]);
+      // TODO: this form does not strictly conserve energy!
+      const KFperMdt = math.multiply(dt / this.mass, math.transpose([frontWheelAxis, backWheelAxis]));
+      const kTauPerMdt = math.multiply(dt / this.moi, [[cross2d(front, frontWheelAxis), cross2d(back, backWheelAxis)]]);
+      const tauVFront = math.transpose([rotVec(front)]);
+      const tauVBack = math.transpose([rotVec(back)]);
 
-        //console.log([frontWheelAxis]);
-        //console.log(math.add(KFperMdt, math.multiply(tauVFront, kTauPerMdt)));
+      //console.log([frontWheelAxis]);
+      //console.log(math.add(KFperMdt, math.multiply(tauVFront, kTauPerMdt)));
 
-        const aFront = math.multiply(
-          [frontWheelAxis],
-          math.add(KFperMdt, math.multiply(tauVFront, kTauPerMdt)));
-        const aBack = math.multiply(
-          [backWheelAxis],
-          math.add(KFperMdt, math.multiply(tauVBack, kTauPerMdt)));
+      const aFront = math.multiply(
+        [frontWheelAxis],
+        math.add(KFperMdt, math.multiply(tauVFront, kTauPerMdt)));
+      const aBack = math.multiply(
+        [backWheelAxis],
+        math.add(KFperMdt, math.multiply(tauVBack, kTauPerMdt)));
 
-        const thrustForce = math.multiply(thrust, fwd);
-        //LOG_SOME(this.v);
-        //LOG_SOME(fwd);
-        //LOG_SOME(thrustForce);
-        const F0perMdt = math.multiply(dt / this.mass, math.add(externalForces, thrustForce));
+      const thrustForce = math.multiply(thrust, fwd);
+      //LOG_SOME(this.v);
+      //LOG_SOME(fwd);
+      //LOG_SOME(thrustForce);
+      const F0perMdt = math.multiply(dt / this.mass, math.add(externalForces, thrustForce));
 
-        const bFront = -math.dot(frontWheelAxis, math.add(
-          F0perMdt,
-          this.v,
-          math.multiply(rotVec(front), this.vrot))
-        );
-        const bBack = -math.dot(backWheelAxis, math.add(
-          F0perMdt,
-          this.v,
-          math.multiply(rotVec(back), this.vrot))
-        );
+      const bFront = -math.dot(frontWheelAxis, math.add(
+        F0perMdt,
+        this.v,
+        math.multiply(rotVec(front), this.vrot))
+      );
+      const bBack = -math.dot(backWheelAxis, math.add(
+        F0perMdt,
+        this.v,
+        math.multiply(rotVec(back), this.vrot))
+      );
 
-        const A = [aFront[0], aBack[0]];
-        const b = [bFront, bBack];
+      const A = [aFront[0], aBack[0]];
+      const b = [bFront, bBack];
 
-        //console.log({dt, vrot: this.vrot});
-        //LOG_SOME({A,b});
+      //console.log({dt, vrot: this.vrot});
+      //LOG_SOME({A,b});
 
-        const forceCoeffs = math.lusolve(A, b);
-        //LOG_SOME(forceCoeffs);
+      const forceCoeffs = math.lusolve(A, b);
+      //LOG_SOME(forceCoeffs);
 
-        const forceFront = forceCoeffs[0][0];
-        const forceBack = forceCoeffs[1][0];
+      const forceFront = forceCoeffs[0][0];
+      const forceBack = forceCoeffs[1][0];
 
-        //console.log({forceFront, forceBack});
+      //console.log({forceFront, forceBack});
 
-        return [
-          math.multiply(forceFront, frontWheelAxis),
-          math.add(math.multiply(forceBack, backWheelAxis), thrustForce)
-        ];
-    }
+      return [
+        math.multiply(forceFront, frontWheelAxis),
+        math.add(math.multiply(forceBack, backWheelAxis), thrustForce)
+      ];
+    };
 
     const solveForcesSemiSlip = (point, axis, externalF, externalT) => {
-        const KFperMdt = math.multiply(dt / this.mass, math.transpose([axis]));
-        const kTauPerMdt = math.multiply(dt / this.moi, [[cross2d(point, axis)]]);
-        const tauV = math.transpose([rotVec(point)]);
-        const a = math.multiply([axis], math.add(KFperMdt, math.multiply(tauV, kTauPerMdt)));
+      const KFperMdt = math.multiply(dt / this.mass, math.transpose([axis]));
+      const kTauPerMdt = math.multiply(dt / this.moi, [[cross2d(point, axis)]]);
+      const tauV = math.transpose([rotVec(point)]);
+      const a = math.multiply([axis], math.add(KFperMdt, math.multiply(tauV, kTauPerMdt)));
 
-        //LOG_SOME({point, axis, externalF, externalT});
+      //LOG_SOME({point, axis, externalF, externalT});
 
-        //const thrustForce = math.multiply(thrust, fwd);
-        const F0perMdt = math.multiply(dt / this.mass, externalF);
-        const bb = -math.dot(axis, math.add(
-          F0perMdt,
-          this.v,
-          math.multiply(rotVec(point), this.vrot + dt * externalT / this.moi))
-        );
+      //const thrustForce = math.multiply(thrust, fwd);
+      const F0perMdt = math.multiply(dt / this.mass, externalF);
+      const bb = -math.dot(axis, math.add(
+        F0perMdt,
+        this.v,
+        math.multiply(rotVec(point), this.vrot + dt * externalT / this.moi))
+      );
 
-        //console.log({dt, vrot: this.vrot});
-        //console.log({A,b});
+      //console.log({dt, vrot: this.vrot});
+      //console.log({A,b});
 
-        // no need for lusolve here
-        //const A = [a[0]];
-        //const b = [bb];
-        //const forceCoeffs = math.lusolve(A, b);
-        const forceCoeff = bb / a[0][0];
-        return math.multiply(forceCoeff, axis);
-    }
+      // no need for lusolve here
+      //const A = [a[0]];
+      //const b = [bb];
+      //const forceCoeffs = math.lusolve(A, b);
+      const forceCoeff = bb / a[0][0];
+      return math.multiply(forceCoeff, axis);
+    };
 
     const solveForces = () => {
       const backFriction = this.slip.back ? DYNAMIC_FRICTION : STATIC_FRICTION;
@@ -297,7 +297,7 @@ function Car() {
       }
 
       return [forceFront, forceBack];
-    }
+    };
 
     const [forceFront, forceBack] = solveForces();
 
@@ -321,6 +321,48 @@ function Car() {
     const [vx, vy, vrot] = math.add(v0, deltaV);
     this.v = [vx, vy];
     this.vrot = vrot;
+
     //console.log(vrot);
+  };
+
+  this.getPolygon = () => {
+    const fwd = [Math.cos(this.rot), Math.sin(this.rot)];
+    const right = rot90cw(fwd);
+    const back = math.multiply(fwd, -this.dim.length*0.5);
+    const front = math.multiply(fwd, this.dim.length*0.5);
+    const halfSide = math.multiply(right, this.dim.width*0.5);
+    return [
+      math.subtract(front, halfSide),
+      math.add(front, halfSide),
+      math.add(back, halfSide),
+      math.subtract(back, halfSide)
+    ].map(p => math.add(p, this.pos));
+  };
+
+  this.applyImpulse = (point, impulse) => {
+    const r = math.subtract(point, this.pos);
+    const angularImpulse = cross2d(r, impulse);
+    const linearImpulse = impulse;
+
+    //console.log({totalForce, totalTorque});
+    //console.log(math.multiply(dt, math.multiply(Minv, [totalForce[0], totalForce[1], totalTorque])));
+
+    const deltaV = math.multiply(Minv, [linearImpulse[0], linearImpulse[1], angularImpulse]);
+    const v1 = math.add([this.v[0], this.v[1], this.vrot], deltaV);
+    this.v = [v1[0], v1[1]];
+    this.vrot = v1[2];
+  };
+
+  this.collideToWall = (point, normal, restitution = 0.0) => {
+    const relPoint = math.subtract(point, this.pos);
+    const rv = rotVec(relPoint);
+    const pointVel = math.add(this.v, math.multiply(rv, this.vrot));
+    const vdotn = math.dot(normal, pointVel);
+    if (vdotn > 0.0) return; // alredy detaching -> do nothing
+
+    const impulseInelastic = -vdotn / (1.0 / this.mass + 1 / this.moi * cross2d(relPoint, normal) * math.dot(rv, normal));
+    const impulse = impulseInelastic * (1.0 + restitution);
+
+    this.applyImpulse(point, math.multiply(impulse, normal));
   };
 }
