@@ -19,3 +19,8 @@ forces to the left and right wheel on each axle, i.e.,
  * no suspension
  * no roll
  * equal coefficients of friction
+
+TODO:
+
+ * brakes
+ * non-constant torque from engine

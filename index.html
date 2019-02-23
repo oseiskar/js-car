@@ -6,6 +6,8 @@
 <body>
 <svg width="1000" height="800">
 </svg>
+<p id="speed-o-meter" style="text-align: right; width: 100px">
+</p>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/5.9.0/d3.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/5.4.2/math.min.js"></script>
 <script src="car.js"></script>
@@ -48,6 +50,8 @@ let dt = 0.0;
 
 const physicsDt = 0.01;
 
+const speedOMeter = document.getElementById('speed-o-meter');
+
 function draw() {
 
   const t0 = t;
@@ -58,6 +62,7 @@ function draw() {
     track.move(physicsDt, curControls);
   }
   renderer();
+  speedOMeter.innerText = Math.round(track.car.getSpeed() * 3.6) + ' km/h';
   requestAnimationFrame(draw);
 }
 draw();

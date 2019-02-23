@@ -36,15 +36,17 @@ function Car() {
   };
 
   let wheelAngle = 0.0;
+  let timeSinceSteerChange = 0.0;
+  let lastSteerDir = 0;
   this.frontWheelAngles = [0, 0];
 
   const MIN_TURNING_RADIUS = this.dim.length;
   const MAX_WHEEL_ANGLE = Math.atan(this.dim.length / MIN_TURNING_RADIUS);
-  const WHEEL_TURN_SPEED = 1.5; // radians / sec
+  const WHEEL_TURN_SPEED = 2.0; // radians / sec
   const AIR_RES_COEFF = this.mass * 0.3;
   const GRAVITY = 9.81;
-  const STATIC_FRICTION = 0.99;
-  const DYNAMIC_FRICTION = 0.2;
+  const STATIC_FRICTION = 1.3; // this can actually be > 1
+  const DYNAMIC_FRICTION = 0.4;
 
   const M = [
     [this.mass, 0, 0],
@@ -79,25 +81,35 @@ function Car() {
   this.steer = (dt, curControls) => {
     // compute min cornering radius for this speed. This "auto-steering" is
     // just to make steering with arrow keys easier
-    const SAFETY_MARGIN = 1.7;
-    const minR = math.dot(this.v, this.v) / (STATIC_FRICTION * GRAVITY) * SAFETY_MARGIN;
+    const SAFETY_MARGIN = 1.8 - Math.min(timeSinceSteerChange, 0.8) + Math.abs(this.vrot) * 0.1;
+    const speed = norm(this.v);
+    const minR = speed*speed / (STATIC_FRICTION * GRAVITY) * SAFETY_MARGIN;
     const maxAngle = Math.min(MAX_WHEEL_ANGLE, this.slip.back ? 1000 : Math.atan(this.dim.length / minR));
+
     //const sensitivity = Math.min(1.0 / (norm(this.v) / dimScale / 15.0), 1.0);
     //LOG_SOME(minR / this.dim.length);
 
-    let targetWheelAngle = 0.0;
-    if (curControls.left) {
-      targetWheelAngle = -maxAngle;
-    } else if (curControls.right) {
-      targetWheelAngle = maxAngle;
+    const steerDir = curControls.left ? -1 : (curControls.right ? 1 : 0);
+    if (lastSteerDir === steerDir) {
+      timeSinceSteerChange += dt;
     } else {
-      targetWheelAngle = 0.0;
+      timeSinceSteerChange = 0;
+    }
+    lastSteerDir = steerDir;
+
+    const targetWheelAngle = steerDir ? maxAngle * steerDir : 0;
+
+    const TURN_SPEED_PER_SEC = WHEEL_TURN_SPEED / 0.5;
+    let turnSpeed = WHEEL_TURN_SPEED;
+    if (steerDir) {
+      const d = Math.abs(targetWheelAngle - wheelAngle);
+      turnSpeed = Math.min(WHEEL_TURN_SPEED, d * 40.0);
     }
 
     if (wheelAngle != targetWheelAngle) {
       const diff = targetWheelAngle - wheelAngle;
       //console.log(sensitivity);
-      const maxDelta = dt * WHEEL_TURN_SPEED;
+      const maxDelta = dt * turnSpeed;
       wheelAngle += Math.sign(diff) * Math.min(Math.abs(diff), maxDelta);
     }
 
@@ -338,6 +350,10 @@ function Car() {
       math.subtract(back, halfSide)
     ].map(p => math.add(p, this.pos));
   };
+
+  this.getSpeed = () => {
+    return norm(this.v);
+  }
 
   this.applyImpulse = (point, impulse) => {
     const r = math.subtract(point, this.pos);
