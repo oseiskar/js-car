@@ -42,14 +42,21 @@ const svg = d3.select('svg');
 const renderer = buildTrackRenderer(track, svg,
   parseInt(svg.style('width'),10),
   parseInt(svg.style('height'),10));
+
 let t = new Date();
+let dt = 0.0;
+
+const physicsDt = 0.01;
 
 function draw() {
 
   const t0 = t;
   t = new Date();
-  const dt = (t - t0) * 1e-3;
-  track.move(dt, curControls);
+  dt += (t - t0) * 1e-3;
+  while (dt >= physicsDt) {
+    dt -= physicsDt;
+    track.move(physicsDt, curControls);
+  }
   renderer();
   requestAnimationFrame(draw);
 }
