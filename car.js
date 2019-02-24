@@ -8,26 +8,46 @@ const LOG_SOME = (() => {
 })();
 
 function Car() {
+  this.properties = (() => {
+    const dimScale = 0.2;
+    const mass = 300.0 * dimScale**3; // kg
+    const length = 3 * dimScale;
+    const width = 2* dimScale;
+    const minTurningRadius = length;
 
-  const dimScale = 0.2;
-  //this.tScale = 3.0;
+    // moment of inertia
+    const MoI = 1/12 * (length * length + width * width) * mass;
 
-  this.dim = {
-    length: 3 * dimScale,
-    width: 2 * dimScale
-  };
+    // inertia tensor (mass & MoI)
+    const M = [
+      [mass, 0, 0],
+      [0, mass, 0],
+      [0, 0, MoI]
+    ];
 
-  this.mass = 300.0 * dimScale**3; // kg
-  this.moi = 1/12 * (
-    this.dim.length * this.dim.length +
-    this.dim.width * this.dim.width) * this.mass;
-
-  //this.cmBalance = -0.2;
+    // Some of these are physical constants and some actually should
+    // depend on the track (like friction). From the point of view of this
+    // class, they are constants
+    return {
+      mass,
+      MoI,
+      length,
+      width,
+      M,
+      Minv: math.inv(M),
+      gravity: 9.81,
+      airResistance: mass * 0.3,
+      staticFriction: 1.3,
+      dynamicFriction: 0.4,
+      wheelTurnSpeed: 2.0, // radians per second
+      maxWheelAngle: Math.atan(length / minTurningRadius),
+    };
+  })();
 
   this.pos = [0, 0];
   this.rot = Math.PI * 0.5;
 
-  this.v = [0, 5 * dimScale];
+  this.v = [0, this.properties.length];
   this.vrot = 0.0; //1.0;
 
   this.slip = {
@@ -37,120 +57,65 @@ function Car() {
   this.frontWheelAngles = [0, 0];
   this.wheelAngle = 0.0;
 
-  const MIN_TURNING_RADIUS = this.dim.length;
-  const MAX_WHEEL_ANGLE = Math.atan(this.dim.length / MIN_TURNING_RADIUS);
-  const WHEEL_TURN_SPEED = 2.0; // radians / sec
-  const AIR_RES_COEFF = this.mass * 0.3;
-  const GRAVITY = 9.81;
-  const STATIC_FRICTION = 1.3; // this can actually be > 1
-  const DYNAMIC_FRICTION = 0.4;
-
-  const M = [
-    [this.mass, 0, 0],
-    [0, this.mass, 0],
-    [0, 0, this.moi]
-  ];
-
-  const Minv = math.inv(M);
-
-  function cross2d(x, y) {
-    return x[0]*y[1] - y[0]*x[1];
-  }
-
-  function norm(vec) {
-    return Math.sqrt(math.dot(vec, vec));
-  }
-
-  function normalize(vec) {
-    return math.multiply(vec, 1.0 / norm(vec));
-  }
-
-  function rot90cw(vec) {
-    return [vec[1], -vec[0]];
-  }
-
-  function rot90ccw(vec) {
-    return [-vec[1], vec[0]];
-  }
-
-  const rotVec = rot90ccw;
+  const rotVec = MathHelpers.rot90ccw;
+  const { cross2d, norm, normalize, rot90cw } = MathHelpers;
 
   this.move = (dt, controls) => {
-    if (dt == 0.0 || dt > 1.0) return;
-    //dt *= this.tScale;
+    const c = this.properties; // c = "constants"
 
-    //console.log(curControls);
+    if (dt == 0.0 || dt > 1.0) return;
 
     const v0 = [this.v[0], this.v[1], this.vrot];
-
-    //this.pos = math.add(this.pos, math.multiply(this.v, dt));
-    //this.rot += this.vrot * dt;
 
     // local coordinates
     const fwd = [Math.cos(this.rot), Math.sin(this.rot)];
     const right = rot90cw(fwd);
-    //LOG_SOME(right);
 
-    const back = math.multiply(fwd, -this.dim.length*0.5);
-    const front = math.multiply(fwd, this.dim.length*0.5);
+    const back = math.multiply(fwd, -c.length*0.5);
+    const front = math.multiply(fwd, c.length*0.5);
 
     function limitAbs(x, limit) {
       return Math.sign(x) * Math.min(Math.abs(x), limit);
     }
 
     // steer
-    const turnSpeed = limitAbs(controls.wheelTurnSpeed, WHEEL_TURN_SPEED);
-    this.wheelAngle = limitAbs(this.wheelAngle + turnSpeed * dt, MAX_WHEEL_ANGLE);
+    const turnSpeed = limitAbs(controls.wheelTurnSpeed, c.wheelTurnSpeed);
+    this.wheelAngle = limitAbs(this.wheelAngle + turnSpeed * dt, c.maxWheelAngle);
 
     let frontWheelAxis = right;
     this.frontWheelAngles = [0.0, 0.0];
 
     if (this.wheelAngle != 0.0) {
-      const turningRadius = this.dim.length / Math.tan(this.wheelAngle);
+      const turningRadius = c.length / Math.tan(this.wheelAngle);
       const turningCenter = math.add(back, math.multiply(right, turningRadius));
       //console.log(wheelAngle, turningRadius);
       frontWheelAxis = normalize(math.subtract(turningCenter, front));
 
       // fake front wheel angles
       this.frontWheelAngles = [-1, 1].map(side => {
-        const pos = math.add(front, math.multiply(right, side*this.dim.width*0.5));
+        const pos = math.add(front, math.multiply(right, side*c.width*0.5));
         const axis = normalize(math.subtract(turningCenter, pos));
         return Math.asin(math.dot(axis, fwd)) * Math.sign(turningRadius);
       });
-
-      /*LOG_SOME(wheelAngle);
-      LOG_SOME(turningRadius);
-      LOG_SOME(back);
-      LOG_SOME(right);
-      LOG_SOME(turningCenter);
-      LOG_SOME(frontWheelAxis);
-      LOG_SOME(this.pos);*/
     }
 
-    const maxThrust = this.mass * 0.7 * GRAVITY * 0.5;
+    const maxThrust = c.mass * 0.7 * c.gravity * 0.5;
     const thrust = controls.throttle * maxThrust;
-
-    // solve velocity constraints
 
     // solve forces (no slip)
     const backWheelAxis = right;
 
     // external forces
-    const resistance = math.multiply(this.v, -AIR_RES_COEFF);
+    const resistance = math.multiply(this.v, -c.airResistance);
     const externalForces = resistance;
 
     const solveForcesNoSlip = () => {
 
-      //LOG_SOME({frontWheelAxis,backWheelAxis});
-
       // TODO: this form does not strictly conserve energy!
-      const KFperMdt = math.multiply(dt / this.mass, math.transpose([frontWheelAxis, backWheelAxis]));
-      const kTauPerMdt = math.multiply(dt / this.moi, [[cross2d(front, frontWheelAxis), cross2d(back, backWheelAxis)]]);
+      const KFperMdt = math.multiply(dt / c.mass, math.transpose([frontWheelAxis, backWheelAxis]));
+      const kTauPerMdt = math.multiply(dt / c.MoI, [[cross2d(front, frontWheelAxis), cross2d(back, backWheelAxis)]]);
       const tauVFront = math.transpose([rotVec(front)]);
       const tauVBack = math.transpose([rotVec(back)]);
-
-      //console.log([frontWheelAxis]);
-      //console.log(math.add(KFperMdt, math.multiply(tauVFront, kTauPerMdt)));
 
       const aFront = math.multiply(
         [frontWheelAxis],
@@ -160,10 +125,7 @@ function Car() {
         math.add(KFperMdt, math.multiply(tauVBack, kTauPerMdt)));
 
       const thrustForce = math.multiply(thrust, fwd);
-      //LOG_SOME(this.v);
-      //LOG_SOME(fwd);
-      //LOG_SOME(thrustForce);
-      const F0perMdt = math.multiply(dt / this.mass, math.add(externalForces, thrustForce));
+      const F0perMdt = math.multiply(dt / c.mass, math.add(externalForces, thrustForce));
 
       const bFront = -math.dot(frontWheelAxis, math.add(
         F0perMdt,
@@ -179,16 +141,9 @@ function Car() {
       const A = [aFront[0], aBack[0]];
       const b = [bFront, bBack];
 
-      //console.log({dt, vrot: this.vrot});
-      //LOG_SOME({A,b});
-
       const forceCoeffs = math.lusolve(A, b);
-      //LOG_SOME(forceCoeffs);
-
       const forceFront = forceCoeffs[0][0];
       const forceBack = forceCoeffs[1][0];
-
-      //console.log({forceFront, forceBack});
 
       return [
         math.multiply(forceFront, frontWheelAxis),
@@ -197,23 +152,17 @@ function Car() {
     };
 
     const solveForcesSemiSlip = (point, axis, externalF, externalT) => {
-      const KFperMdt = math.multiply(dt / this.mass, math.transpose([axis]));
-      const kTauPerMdt = math.multiply(dt / this.moi, [[cross2d(point, axis)]]);
+      const KFperMdt = math.multiply(dt / c.mass, math.transpose([axis]));
+      const kTauPerMdt = math.multiply(dt / c.MoI, [[cross2d(point, axis)]]);
       const tauV = math.transpose([rotVec(point)]);
       const a = math.multiply([axis], math.add(KFperMdt, math.multiply(tauV, kTauPerMdt)));
 
-      //LOG_SOME({point, axis, externalF, externalT});
-
-      //const thrustForce = math.multiply(thrust, fwd);
-      const F0perMdt = math.multiply(dt / this.mass, externalF);
+      const F0perMdt = math.multiply(dt / c.mass, externalF);
       const bb = -math.dot(axis, math.add(
         F0perMdt,
         this.v,
-        math.multiply(rotVec(point), this.vrot + dt * externalT / this.moi))
+        math.multiply(rotVec(point), this.vrot + dt * externalT / c.MoI))
       );
-
-      //console.log({dt, vrot: this.vrot});
-      //console.log({A,b});
 
       // no need for lusolve here
       //const A = [a[0]];
@@ -224,27 +173,20 @@ function Car() {
     };
 
     const solveForces = () => {
-      const backFriction = this.slip.back ? DYNAMIC_FRICTION : STATIC_FRICTION;
-      const frontFriction = this.slip.front ? DYNAMIC_FRICTION : STATIC_FRICTION;
-      const maxForceBack = this.mass * GRAVITY * backFriction / 2.0;
-      const maxForceFront = this.mass * GRAVITY * frontFriction / 2.0;
+      const backFriction = this.slip.back ? c.dynamicFriction : c.staticFriction;
+      const frontFriction = this.slip.front ? c.dynamicFriction : c.staticFriction;
+      const maxForceBack = c.mass * c.gravity * backFriction / 2.0;
+      const maxForceFront = c.mass * c.gravity * frontFriction / 2.0;
 
       let [forceFront, forceBack] = solveForcesNoSlip();
-      //console.log(forceFront, forceBack);
       this.slip.back = norm(forceBack) > maxForceBack;
       this.slip.front = norm(forceFront) > maxForceFront;
 
-      //console.log(norm(forceFront), maxForce);
-
       if (this.slip.back || this.slip.front) {
-
-        //LOG_SOME(`maxForce: ${maxForceFront},${maxForceBack} ${norm(forceFront)},${norm(forceBack)}`);
-        const maxForceSlip = this.mass * GRAVITY * DYNAMIC_FRICTION / 2.0;
+        const maxForceSlip = c.mass * c.gravity * c.dynamicFriction / 2.0;
 
         const frontVel = math.add(this.v, math.multiply(rotVec(front), this.vrot));
         const backVel = math.add(this.v, math.multiply(rotVec(back), this.vrot));
-        //const backSlippy = math.multiply(normalize(frontVel), -maxForceSlip);
-        //const frontSlippy = math.multiply(normalize(backVel), -maxForceSlip);
         const backSlippy = math.multiply(normalize(forceBack), maxForceSlip);
         const frontSlippy = math.multiply(normalize(forceFront), maxForceSlip);
 
@@ -265,7 +207,6 @@ function Car() {
             forceBack = backSlippy;
           }
         }
-        //LOG_SOME(this.slip.front, this.slip.back);
       }
 
       return [forceFront, forceBack];
@@ -276,15 +217,7 @@ function Car() {
     const totalForce = math.add(externalForces, forceFront, forceBack);
     const totalTorque = cross2d(front, forceFront) + cross2d(back, forceBack);
 
-    //console.log({totalForce, totalTorque});
-    //console.log(math.multiply(dt, math.multiply(Minv, [totalForce[0], totalForce[1], totalTorque])));
-
-    const deltaV = math.multiply(dt, math.multiply(Minv, [totalForce[0], totalForce[1], totalTorque]));
-    //const deltaV = vDiff;
-
-    //console.log(deltaV);
-
-    //console.log(`energy: ${E0}`);
+    const deltaV = math.multiply(dt, math.multiply(c.Minv, [totalForce[0], totalForce[1], totalTorque]));
 
     // integrate position
     this.pos = math.add(this.pos, math.multiply(this.v, dt));
@@ -293,16 +226,14 @@ function Car() {
     const [vx, vy, vrot] = math.add(v0, deltaV);
     this.v = [vx, vy];
     this.vrot = vrot;
-
-    //console.log(vrot);
   };
 
   this.getPolygon = () => {
     const fwd = [Math.cos(this.rot), Math.sin(this.rot)];
     const right = rot90cw(fwd);
-    const back = math.multiply(fwd, -this.dim.length*0.5);
-    const front = math.multiply(fwd, this.dim.length*0.5);
-    const halfSide = math.multiply(right, this.dim.width*0.5);
+    const back = math.multiply(fwd, -this.properties.length*0.5);
+    const front = math.multiply(fwd, this.properties.length*0.5);
+    const halfSide = math.multiply(right, this.properties.width*0.5);
     return [
       math.subtract(front, halfSide),
       math.add(front, halfSide),
@@ -320,10 +251,7 @@ function Car() {
     const angularImpulse = cross2d(r, impulse);
     const linearImpulse = impulse;
 
-    //console.log({totalForce, totalTorque});
-    //console.log(math.multiply(dt, math.multiply(Minv, [totalForce[0], totalForce[1], totalTorque])));
-
-    const deltaV = math.multiply(Minv, [linearImpulse[0], linearImpulse[1], angularImpulse]);
+    const deltaV = math.multiply(this.properties.Minv, [linearImpulse[0], linearImpulse[1], angularImpulse]);
     const v1 = math.add([this.v[0], this.v[1], this.vrot], deltaV);
     this.v = [v1[0], v1[1]];
     this.vrot = v1[2];
@@ -336,7 +264,8 @@ function Car() {
     const vdotn = math.dot(normal, pointVel);
     if (vdotn > 0.0) return; // alredy detaching -> do nothing
 
-    const impulseInelastic = -vdotn / (1.0 / this.mass + 1 / this.moi * cross2d(relPoint, normal) * math.dot(rv, normal));
+    const { mass, MoI } = this.properties;
+    const impulseInelastic = -vdotn / (1.0 / mass + 1 / MoI * cross2d(relPoint, normal) * math.dot(rv, normal));
     const impulse = impulseInelastic * (1.0 + restitution);
 
     this.applyImpulse(point, math.multiply(impulse, normal));

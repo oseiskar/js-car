@@ -24,25 +24,18 @@ function manualSteering() {
   let timeSinceSteerChange = 0.0;
   let lastSteerDir = 0;
 
-  // these are further limited by the car
-  const MAX_WHEEL_ANGLE = Math.PI;
-  const MAX_TURN_SPEED = 1000; // max target turn speed
-
-  const EXTREME_SENSITVITY = 1.0 / 40.0;
-
-  const STATIC_FRICTION = 1.3;
-  const GRAVITY = 9.81;
-
-  return (car, dt) => {
+  function computeMaxSafeAngle(car) {
+    const { gravity, length, staticFriction, maxWheelAngle } = car.properties;
 
     // compute min cornering radius for this speed. This "auto-steering" is
     // just to make steering with arrow keys easier
     const SAFETY_MARGIN = 1.8 - Math.min(timeSinceSteerChange, 0.8) + Math.abs(car.vrot) * 0.1;
-    const minR = math.dot(car.v, car.v) / (STATIC_FRICTION * GRAVITY) * SAFETY_MARGIN;
-    const maxAngle = Math.min(MAX_WHEEL_ANGLE, car.slip.back ? 1000 : Math.atan(car.dim.length / minR));
+    const minR = math.dot(car.v, car.v) / (staticFriction * gravity) * SAFETY_MARGIN;
+    return Math.min(maxWheelAngle, car.slip.back ? 1000 : Math.atan(length / minR));
+  }
 
-    //const sensitivity = Math.min(1.0 / (norm(this.v) / dimScale / 15.0), 1.0);
-    //LOG_SOME(minR / this.dim.length);
+  return (car, dt) => {
+    const maxAngle = computeMaxSafeAngle(car);
 
     const steerDir = keyControls.left ? -1 : (keyControls.right ? 1 : 0);
     if (lastSteerDir === steerDir) {
@@ -54,10 +47,12 @@ function manualSteering() {
 
     const targetWheelAngle = steerDir ? maxAngle * steerDir : 0;
 
-    let turnSpeed = MAX_TURN_SPEED;
+    const { wheelTurnSpeed, maxWheelAngle } = car.properties;
+    let turnSpeed = wheelTurnSpeed;
     if (steerDir) {
+      const EXTREME_SENSITVITY = 1.0 / 40.0;
       const d = Math.abs(targetWheelAngle - car.wheelAngle);
-      turnSpeed = Math.min(MAX_TURN_SPEED, d / EXTREME_SENSITVITY);
+      turnSpeed = Math.min(maxWheelAngle, d / EXTREME_SENSITVITY);
     }
 
     let turn = 0.0;

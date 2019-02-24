@@ -3,16 +3,16 @@ function buildCarRenderer(car, trackCoords) {
 
   const carBody = carCoords
       .append('rect')
-        .attr('x', -car.dim.width*0.5)
-        .attr('y', -car.dim.length*0.5)
-        .attr('width', car.dim.width)
-        .attr('height', car.dim.length)
+        .attr('x', -car.properties.width*0.5)
+        .attr('y', -car.properties.length*0.5)
+        .attr('width', car.properties.width)
+        .attr('height', car.properties.length)
         .attr('fill', 'green');
 
   const wheels = [[true,-1], [true,1], [false,-1], [false,1]].map(([isFront, side]) => {
     const coords = carCoords.append('g');
-    const wheelW = car.dim.width * 0.2;
-    const wheelL = car.dim.width * 0.4;
+    const wheelW = car.properties.width * 0.2;
+    const wheelL = car.properties.width * 0.4;
     const rect = coords.append('rect')
       .attr('x', -wheelW*0.5)
       .attr('y', -wheelL*0.5)
@@ -24,8 +24,8 @@ function buildCarRenderer(car, trackCoords) {
       rect,
       isFront,
       side,
-      x: car.dim.width * 0.5 * side,
-      y: car.dim.length * 0.5 * (isFront ? -1 : 1)
+      x: car.properties.width * 0.5 * side,
+      y: car.properties.length * 0.5 * (isFront ? -1 : 1)
     };
   });
 
