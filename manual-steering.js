@@ -1,4 +1,3 @@
-
 function manualSteering() {
   const keyControls = {};
 

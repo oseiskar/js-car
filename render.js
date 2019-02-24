@@ -1,4 +1,4 @@
-function buildCarRenderer(car, trackCoords) {
+function buildCarRenderer(car, trackCoords, color) {
   const carCoords = trackCoords.append('g');
 
   const carBody = carCoords
@@ -7,7 +7,7 @@ function buildCarRenderer(car, trackCoords) {
         .attr('y', -car.properties.length*0.5)
         .attr('width', car.properties.width)
         .attr('height', car.properties.length)
-        .attr('fill', 'green');
+        .attr('fill', color);
 
   const wheels = [[true,-1], [true,1], [false,-1], [false,1]].map(([isFront, side]) => {
     const coords = carCoords.append('g');
@@ -88,8 +88,13 @@ function buildTrackRenderer(track, svg, width, height) {
     .attr('stroke-dasharray', `0.2 0.3`)
     .attr('fill', 'none');
 
-  const carRenderer = buildCarRenderer(track.car, trackCoords);
+  const carColors = ['green', 'red', 'blue'];
+  let carIndex = 0;
+
+  const carRenderers = track.cars.map(car =>
+    buildCarRenderer(car.model, trackCoords, carColors[carIndex++]));
+
   return () => {
-    carRenderer();
+    carRenderers.forEach(f => f());
   };
 }

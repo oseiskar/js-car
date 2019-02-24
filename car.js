@@ -10,6 +10,7 @@ const LOG_SOME = (() => {
 function Car() {
   this.properties = (() => {
     const dimScale = 0.2;
+    const gravity = 9.81;
     const mass = 300.0 * dimScale**3; // kg
     const length = 3 * dimScale;
     const width = 2* dimScale;
@@ -33,14 +34,15 @@ function Car() {
       MoI,
       length,
       width,
+      gravity,
       M,
       Minv: math.inv(M),
-      gravity: 9.81,
       airResistance: mass * 0.3,
       staticFriction: 1.3,
       dynamicFriction: 0.4,
       wheelTurnSpeed: 2.0, // radians per second
       maxWheelAngle: Math.atan(length / minTurningRadius),
+      maxThrust: mass * 0.7 * gravity * 0.5
     };
   })();
 
@@ -60,6 +62,10 @@ function Car() {
   const rotVec = MathHelpers.rot90ccw;
   const { cross2d, norm, normalize, rot90cw } = MathHelpers;
 
+  function limitAbs(x, limit) {
+    return Math.sign(x) * Math.min(Math.abs(x), limit);
+  }
+
   this.move = (dt, controls) => {
     const c = this.properties; // c = "constants"
 
@@ -68,15 +74,11 @@ function Car() {
     const v0 = [this.v[0], this.v[1], this.vrot];
 
     // local coordinates
-    const fwd = [Math.cos(this.rot), Math.sin(this.rot)];
+    const fwd = this.getForwardDir();
     const right = rot90cw(fwd);
 
     const back = math.multiply(fwd, -c.length*0.5);
     const front = math.multiply(fwd, c.length*0.5);
-
-    function limitAbs(x, limit) {
-      return Math.sign(x) * Math.min(Math.abs(x), limit);
-    }
 
     // steer
     const turnSpeed = limitAbs(controls.wheelTurnSpeed, c.wheelTurnSpeed);
@@ -99,8 +101,7 @@ function Car() {
       });
     }
 
-    const maxThrust = c.mass * 0.7 * c.gravity * 0.5;
-    const thrust = controls.throttle * maxThrust;
+    const thrust = limitAbs(controls.throttle, 1.0) * c.maxThrust;
 
     // solve forces (no slip)
     const backWheelAxis = right;
@@ -229,7 +230,7 @@ function Car() {
   };
 
   this.getPolygon = () => {
-    const fwd = [Math.cos(this.rot), Math.sin(this.rot)];
+    const fwd = this.getForwardDir();
     const right = rot90cw(fwd);
     const back = math.multiply(fwd, -this.properties.length*0.5);
     const front = math.multiply(fwd, this.properties.length*0.5);
@@ -244,6 +245,10 @@ function Car() {
 
   this.getSpeed = () => {
     return norm(this.v);
+  }
+
+  this.getForwardDir = () => {
+    return [Math.cos(this.rot), Math.sin(this.rot)];
   }
 
   this.applyImpulse = (point, impulse) => {

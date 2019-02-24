@@ -6,13 +6,12 @@
 <body>
 <svg width="1000" height="800">
 </svg>
-<p id="speed-o-meter" style="text-align: right; width: 100px">
-</p>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/5.9.0/d3.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/5.4.2/math.min.js"></script>
 <script src="math-helpers.js"></script>
 <script src="car.js"></script>
 <script src="manual-steering.js"></script>
+<script src="ai-steering.js"></script>
 <script src="track.js"></script>
 <script src="render.js"></script>
 <script>
@@ -21,29 +20,43 @@ console.log('-----begin-----');
 
 const scale = 0.3;
 const track = new Track({ widthMeters: 5 / scale, heightMeters: 4 / scale });
+track.addCar(manualSteering(), 'You');
+track.addCar(simpleAISteering(track.points), 'AI');
+
 const svg = d3.select('svg');
 const renderer = buildTrackRenderer(track, svg,
   parseInt(svg.style('width'),10),
   parseInt(svg.style('height'),10));
 
-const speedOMeter = document.getElementById('speed-o-meter');
-
 let t = new Date();
-let dt = 0.0;
+let deltaTime = 0.0;
 
 const physicsDt = 0.01;
-const steering = manualSteering();
 
 function draw() {
+  const MAX_DT = 0.2;
+
   const t0 = t;
   t = new Date();
-  dt += (t - t0) * 1e-3;
-  while (dt >= physicsDt) {
-    dt -= physicsDt;
-    track.move(physicsDt, steering(track.car, dt));
+  const curDt = (t - t0) * 1e-3;
+
+  if (curDt > MAX_DT) {
+    console.log('animation paused or in background');
+  } else {
+    deltaTime += curDt;
   }
+
+  if (deltaTime > MAX_DT) {
+    console.warn('simulation lag detected');
+    deltaTime = 0;
+  }
+
+  while (deltaTime >= physicsDt) {
+    deltaTime -= physicsDt;
+    track.move(physicsDt);
+  }
+
   renderer();
-  speedOMeter.innerText = Math.round(track.car.getSpeed() * 3.6) + ' km/h';
   requestAnimationFrame(draw);
 }
 draw();

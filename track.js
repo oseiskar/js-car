@@ -9,10 +9,19 @@ function randnBoxMuller(rng) {
 class Track {
   constructor({ widthMeters = 600, heightMeters = 400 } = {}) {
       this.size = { width: widthMeters, height: heightMeters };
-      this.car = new Car();
-      this.car.pos = [0, 0];
+      this.cars = [];
       this.trackWidth = 2.0;
       this.points = this.generateTrackPoints();
+  }
+
+  addCar(steering, name) {
+    const model = new Car();
+    model.pos = this.points[0];
+    this.cars.push({
+      model,
+      steering,
+      name
+    });
   }
 
   generateTrackPoints() {
@@ -48,12 +57,14 @@ class Track {
     return points;
   }
 
-  move(dt, curControls) {
-    this.car.move(dt, curControls);
-    this.collisions(dt);
+  move(dt) {
+    this.cars.forEach(car => {
+      car.model.move(dt, car.steering(car.model, dt));
+      this.collisions(car.model, dt);
+    });
   }
 
-  collisions(dt) {
+  collisions(car, dt) {
     const bnd = [
       this.size.width * 0.5,
       this.size.height * 0.5
@@ -62,13 +73,13 @@ class Track {
     // how elastic are the wall collisions
     const coefficientOfRestitution = 0.2;
 
-    this.car.getPolygon().forEach(p => {
+    car.getPolygon().forEach(p => {
       [0,1].forEach(coord => {
         [-1,1].forEach(side => {
           if (side*p[coord] > bnd[coord]) {
             const normal = [0,0];
             normal[coord] = -side;
-            this.car.collideToWall(p, normal, coefficientOfRestitution);
+            car.collideToWall(p, normal, coefficientOfRestitution);
           }
         });
       });

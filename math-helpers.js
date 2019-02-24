@@ -17,5 +17,20 @@ const MathHelpers = {
 
   rot90ccw(vec) {
     return [-vec[1], vec[0]];
+  },
+
+  argMax(array) { // array must not contain nulls / undefineds
+    let maxX, bestI;
+    for (let [i, x] of array.entries()) {
+      if (i === 0 || x > maxX) {
+        maxX = x;
+        bestI = i;
+      }
+    };
+    return bestI;
+  },
+
+  distance(x, y) {
+    return MathHelpers.norm(math.subtract(x, y));
   }
 };
