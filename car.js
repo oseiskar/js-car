@@ -34,11 +34,8 @@ function Car() {
     front: false,
     back: false
   };
-
-  let wheelAngle = 0.0;
-  let timeSinceSteerChange = 0.0;
-  let lastSteerDir = 0;
   this.frontWheelAngles = [0, 0];
+  this.wheelAngle = 0.0;
 
   const MIN_TURNING_RADIUS = this.dim.length;
   const MAX_WHEEL_ANGLE = Math.atan(this.dim.length / MIN_TURNING_RADIUS);
@@ -78,44 +75,7 @@ function Car() {
 
   const rotVec = rot90ccw;
 
-  this.steer = (dt, curControls) => {
-    // compute min cornering radius for this speed. This "auto-steering" is
-    // just to make steering with arrow keys easier
-    const SAFETY_MARGIN = 1.8 - Math.min(timeSinceSteerChange, 0.8) + Math.abs(this.vrot) * 0.1;
-    const speed = norm(this.v);
-    const minR = speed*speed / (STATIC_FRICTION * GRAVITY) * SAFETY_MARGIN;
-    const maxAngle = Math.min(MAX_WHEEL_ANGLE, this.slip.back ? 1000 : Math.atan(this.dim.length / minR));
-
-    //const sensitivity = Math.min(1.0 / (norm(this.v) / dimScale / 15.0), 1.0);
-    //LOG_SOME(minR / this.dim.length);
-
-    const steerDir = curControls.left ? -1 : (curControls.right ? 1 : 0);
-    if (lastSteerDir === steerDir) {
-      timeSinceSteerChange += dt;
-    } else {
-      timeSinceSteerChange = 0;
-    }
-    lastSteerDir = steerDir;
-
-    const targetWheelAngle = steerDir ? maxAngle * steerDir : 0;
-
-    const TURN_SPEED_PER_SEC = WHEEL_TURN_SPEED / 0.5;
-    let turnSpeed = WHEEL_TURN_SPEED;
-    if (steerDir) {
-      const d = Math.abs(targetWheelAngle - wheelAngle);
-      turnSpeed = Math.min(WHEEL_TURN_SPEED, d * 40.0);
-    }
-
-    if (wheelAngle != targetWheelAngle) {
-      const diff = targetWheelAngle - wheelAngle;
-      //console.log(sensitivity);
-      const maxDelta = dt * turnSpeed;
-      wheelAngle += Math.sign(diff) * Math.min(Math.abs(diff), maxDelta);
-    }
-
-  };
-
-  this.move = (dt, curControls) => {
+  this.move = (dt, controls) => {
     if (dt == 0.0 || dt > 1.0) return;
     //dt *= this.tScale;
 
@@ -134,13 +94,19 @@ function Car() {
     const back = math.multiply(fwd, -this.dim.length*0.5);
     const front = math.multiply(fwd, this.dim.length*0.5);
 
-    this.steer(dt, curControls);
+    function limitAbs(x, limit) {
+      return Math.sign(x) * Math.min(Math.abs(x), limit);
+    }
+
+    // steer
+    const turnSpeed = limitAbs(controls.wheelTurnSpeed, WHEEL_TURN_SPEED);
+    this.wheelAngle = limitAbs(this.wheelAngle + turnSpeed * dt, MAX_WHEEL_ANGLE);
 
     let frontWheelAxis = right;
     this.frontWheelAngles = [0.0, 0.0];
 
-    if (wheelAngle != 0.0) {
-      const turningRadius = this.dim.length / Math.tan(wheelAngle);
+    if (this.wheelAngle != 0.0) {
+      const turningRadius = this.dim.length / Math.tan(this.wheelAngle);
       const turningCenter = math.add(back, math.multiply(right, turningRadius));
       //console.log(wheelAngle, turningRadius);
       frontWheelAxis = normalize(math.subtract(turningCenter, front));
@@ -161,14 +127,8 @@ function Car() {
       LOG_SOME(this.pos);*/
     }
 
-    let thrust = 0.0;
     const maxThrust = this.mass * 0.7 * GRAVITY * 0.5;
-    if (curControls.throttle) {
-      thrust = maxThrust;
-    }
-    else if (curControls.brake) {
-      thrust = -maxThrust;
-    }
+    const thrust = controls.throttle * maxThrust;
 
     // solve velocity constraints
 

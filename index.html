@@ -11,30 +11,10 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/5.9.0/d3.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/5.4.2/math.min.js"></script>
 <script src="car.js"></script>
+<script src="manual-steering.js"></script>
 <script src="track.js"></script>
 <script src="render.js"></script>
 <script>
-
-const curControls = {};
-
-const keymap = {
-  37: 'left',
-  39: 'right',
-  38: 'throttle',
-  40: 'brake'
-};
-
-document.onkeydown = function(e) {
-  if (keymap[e.keyCode]) {
-    curControls[keymap[e.keyCode]] = true;
-  }
-};
-
-document.onkeyup = function(e) {
-  if (keymap[e.keyCode]) {
-    curControls[keymap[e.keyCode]] = false;
-  }
-};
 
 console.log('-----begin-----');
 
@@ -45,21 +25,21 @@ const renderer = buildTrackRenderer(track, svg,
   parseInt(svg.style('width'),10),
   parseInt(svg.style('height'),10));
 
+const speedOMeter = document.getElementById('speed-o-meter');
+
 let t = new Date();
 let dt = 0.0;
 
 const physicsDt = 0.01;
-
-const speedOMeter = document.getElementById('speed-o-meter');
+const steering = manualSteering();
 
 function draw() {
-
   const t0 = t;
   t = new Date();
   dt += (t - t0) * 1e-3;
   while (dt >= physicsDt) {
     dt -= physicsDt;
-    track.move(physicsDt, curControls);
+    track.move(physicsDt, steering(track.car, dt));
   }
   renderer();
   speedOMeter.innerText = Math.round(track.car.getSpeed() * 3.6) + ' km/h';
