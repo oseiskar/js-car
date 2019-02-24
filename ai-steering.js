@@ -1,38 +1,57 @@
-function simpleAISteering(trackPoints) {
+function pidSteering(trackPoints, {
+  targetVelocity = 3.5,
+  targetPointOffset = 5,
+  velocityPid = {
+    p: 1.0
+  },
+  anglePid = {
+    p: 2.0,
+    d: 0.5
+  }
+} = {}) {
+
+  function pidControl({ p = 0.0, i = 0.0, d = 0.0 } = {}) {
+    let prevX;
+    let xIntegral = 0.0;
+    return (x, dt) => {
+      xIntegral += x*dt;
+      let dx = 0.0;
+      if (dt > 0.0 && prevX !== undefined) {
+        dx = (x - prevX) / dt;
+      }
+      prevX = x;
+      return x * p + xIntegral * i + dx * d;
+    }
+  }
+
+  const velocityControl = pidControl(velocityPid);
+  const angleControl = pidControl(anglePid);
+
   const { norm, normalize, argMax, cross2d, distance } = MathHelpers;
-
-  const N_FORWARD = 5;
-  const TARGET_VELOCITY = 3.5;
-  const VEL_P = 1.0;
-  const ANGLE_P = 2.0;
-  const ANGLE_D = 0.5;
-
-  let prevAngleError;
 
   return (car, dt) => {
     const closestTrackPointIndex = argMax(
       trackPoints.map(p => -distance(p, car.pos)));
 
-    const targetIndex = (closestTrackPointIndex + N_FORWARD) % trackPoints.length;
+    // handle both constant and variable velocities
+    const curTargetVelocity = (targetVelocity.length ?
+      targetVelocity[closestTrackPointIndex] :
+      targetVelocity) * (car.slip.back ? 0.5 : 1.0);
+
+    const targetIndex = (closestTrackPointIndex + targetPointOffset) % trackPoints.length;
     const targetPoint = trackPoints[targetIndex];
     const targetDistance = norm(targetPoint, car.pos);
     const targetVec = normalize(math.subtract(targetPoint, car.pos));
-    const fwd = car.getForwardDir();
-    const angleDeviation = Math.asin(cross2d(targetVec, fwd));
+    const angleDeviation = Math.asin(cross2d(targetVec, car.getForwardDir()));
     const targetWheelAngle = angleDeviation;
 
-    const angleError = (targetWheelAngle - car.wheelAngle);
-
-    let dAngleError = 0.0;
-    if (prevAngleError !== undefined && dt > 0.0) {
-      dAngleError = (angleError - prevAngleError) / dt;
-    }
-    prevAngleError = angleError;
-
-    const targetVel = TARGET_VELOCITY * (car.slip.back ? 0.5 : 1.0);
     return {
-      throttle: (targetVel - car.getSpeed()) * VEL_P,
-      wheelTurnSpeed: (targetWheelAngle - car.wheelAngle) * ANGLE_P + dAngleError * ANGLE_D
+      throttle: velocityControl(curTargetVelocity - car.getSpeed(), dt),
+      wheelTurnSpeed: angleControl(targetWheelAngle - car.wheelAngle, dt)
     };
   };
+}
+
+function simpleAISteering(trackPoints) {
+  return pidSteering(trackPoints);
 }
