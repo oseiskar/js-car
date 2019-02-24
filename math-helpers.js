@@ -32,5 +32,9 @@ const MathHelpers = {
 
   distance(x, y) {
     return MathHelpers.norm(math.subtract(x, y));
+  },
+
+  limitAbs(x, limit) {
+    return Math.sign(x) * Math.min(Math.abs(x), limit);
   }
 };

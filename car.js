@@ -60,11 +60,7 @@ function Car() {
   this.wheelAngle = 0.0;
 
   const rotVec = MathHelpers.rot90ccw;
-  const { cross2d, norm, normalize, rot90cw } = MathHelpers;
-
-  function limitAbs(x, limit) {
-    return Math.sign(x) * Math.min(Math.abs(x), limit);
-  }
+  const { cross2d, norm, normalize, rot90cw, limitAbs } = MathHelpers;
 
   this.move = (dt, controls) => {
     const c = this.properties; // c = "constants"

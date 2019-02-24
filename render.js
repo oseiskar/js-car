@@ -50,6 +50,23 @@ function buildCarRenderer(car, trackCoords, color) {
   };
 }
 
+function addAiPlanVisualization(coords, visu, scale) {
+  const maxVel = visu.velocities ? Math.max(...visu.velocities) : 1.0;
+  function velocityColormap(x) {
+    const rel = Math.min(x / maxVel, 1.0) * 255;
+    return `rgb(${rel}, 100, 100)`;
+  }
+
+  for (let [idx, point] of visu.track.entries()) {
+    const v = visu.velocities[idx];
+    coords.append('circle')
+      .attr('cx', point[0])
+      .attr('cy', point[1])
+      .attr('r', 4.0 / scale)
+      .attr('fill', v !== undefined ? velocityColormap(v) : 'gray');
+  }
+}
+
 function buildTrackRenderer(track, svg, width, height) {
   const metricSize = track.size;
   const scale = Math.min(width / metricSize.width, height / metricSize.height);
@@ -88,6 +105,8 @@ function buildTrackRenderer(track, svg, width, height) {
     .attr('stroke-dasharray', `0.2 0.3`)
     .attr('fill', 'none');
 
+  const aiVisus = trackCoords.append('g');
+
   const carColors = ['green', 'red', 'blue'];
   let carIndex = 0;
 
@@ -106,6 +125,10 @@ function buildTrackRenderer(track, svg, width, height) {
       .attr('y', carIndex * 20 + 10)
       .attr('fill', color)
       .html('&bull; ' + htmlEscape(car.name));
+
+    //const visu = car.steering.visualization;
+    //if (visu) addAiPlanVisualization(aiVisus, visu, scale);
+
     return buildCarRenderer(car.model, trackCoords, color);
   });
 
