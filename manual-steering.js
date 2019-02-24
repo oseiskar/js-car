@@ -51,7 +51,7 @@ function manualSteering() {
     if (steerDir) {
       const EXTREME_SENSITVITY = 1.0 / 40.0;
       const d = Math.abs(targetWheelAngle - car.wheelAngle);
-      turnSpeed = Math.min(maxWheelAngle, d / EXTREME_SENSITVITY);
+      turnSpeed = Math.min(wheelTurnSpeed, d / EXTREME_SENSITVITY);
     }
 
     let turn = 0.0;
