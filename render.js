@@ -91,8 +91,23 @@ function buildTrackRenderer(track, svg, width, height) {
   const carColors = ['green', 'red', 'blue'];
   let carIndex = 0;
 
-  const carRenderers = track.cars.map(car =>
-    buildCarRenderer(car.model, trackCoords, carColors[carIndex++]));
+  function htmlEscape(str) {
+    // why's this not a standard part of ECMAScript-something in 2019 ?!!!
+    // seriously weak, guys...
+    const dummy = document.createElement('div');
+    dummy.innerText = str;
+    return dummy.innerHTML;
+  }
+
+  const carRenderers = track.cars.map(car => {
+    const color = carColors[carIndex++ % carColors.length];
+    svg.append('text')
+      .attr('x', 20)
+      .attr('y', carIndex * 20 + 10)
+      .attr('fill', color)
+      .html('&bull; ' + htmlEscape(car.name));
+    return buildCarRenderer(car.model, trackCoords, color);
+  });
 
   return () => {
     carRenderers.forEach(f => f());
