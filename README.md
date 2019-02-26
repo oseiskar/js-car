@@ -1,6 +1,6 @@
 # JavaScript 2D car dynamics simulation
 
-Features:
+### Physics model features:
 
  * auto-generated track
  * collisions with the 4 walls
@@ -20,7 +20,17 @@ forces to the left and right wheel on each axle, i.e.,
  * no roll
  * equal coefficients of friction
 
-TODO:
+*TODO*:
 
  * brakes
  * non-constant torque from engine
+ * noise
+
+### AI drivers
+
+ * PID control with a few tricks
+ * Route planning with an ad-hoc "rubber band model"
+
+*TODO*
+
+ * Physics-based controller (non-PID)
