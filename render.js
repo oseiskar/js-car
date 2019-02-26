@@ -50,21 +50,31 @@ function buildCarRenderer(car, trackCoords, color) {
   };
 }
 
-function addAiPlanVisualization(coords, visu, scale) {
-  const maxVel = visu.velocities ? Math.max(...visu.velocities) : 1.0;
+function buildAiPlanVisualizer(coords, visualizationGenerator, scale) {
+  const group = coords.append('g');
+
   function velocityColormap(x) {
-    const rel = Math.min(x / maxVel, 1.0) * 255;
-    return `rgb(${rel}, 100, 100)`;
+    const maxVel = 10;
+    const minVel = 6.0;
+    const rel = Math.max(0.0, Math.min((x-minVel) / (maxVel - minVel), 1.0));
+    return `rgb(${(1.0-rel)*255}, ${rel*255}, 0)`;
   }
 
-  for (let [idx, point] of visu.track.entries()) {
-    const v = visu.velocities[idx];
-    coords.append('circle')
-      .attr('cx', point[0])
-      .attr('cy', point[1])
-      .attr('r', 4.0 / scale)
-      .attr('fill', v !== undefined ? velocityColormap(v) : 'gray');
-  }
+  let renderedVersion;
+  return () => {
+    const data = visualizationGenerator();
+    if (!data || !data.route || data.version === renderedVersion) return;
+    group.selectAll('circle').remove();
+    group.selectAll('circle')
+      .data(data.route)
+      .enter()
+      .append('circle')
+      .attr('cx', (d, idx) => d[0])
+      .attr('cy', (d, idx) => d[1])
+      .attr('r', 2.0 / scale)
+      .attr('fill-opacity', 0.5)
+      .attr('fill', (_, idx) => velocityColormap(data.velocities[idx]));
+  };
 }
 
 function buildTrackRenderer(track, svg, width, height) {
@@ -127,9 +137,15 @@ function buildTrackRenderer(track, svg, width, height) {
       .html('&bull; ' + htmlEscape(car.name));
 
     const visu = car.steering.visualization;
-    if (visu) addAiPlanVisualization(aiVisus, visu, scale);
+    const renderAiPlan = visu ?
+      buildAiPlanVisualizer(aiVisus, visu, scale) :
+      () => {};
 
-    return buildCarRenderer(car.model, trackCoords, color);
+    const renderCar = buildCarRenderer(car.model, trackCoords, color);
+    return () => {
+      renderAiPlan();
+      renderCar();
+    }
   });
 
   return () => {

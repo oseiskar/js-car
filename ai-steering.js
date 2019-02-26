@@ -89,52 +89,76 @@ function computeRouteLength(points) {
   return l;
 }
 
-function rubberBandRoute(trackPoints, trackWidth, {
+function rubberBandRouteOptimizer(trackPoints, trackWidth, {
   iterations = 60,
-  springConstant = 1.0,
-  trackConstraintSpringConstant = 20.0,
-  dt = 0.4
+  springConstant = 2.0,
+  stepSize = 0.2,
+  trackConstraintSpringConstant = 0.5,
 } = {}) {
   let points = [...trackPoints];
 
-  const restLength = 0.0; //computeRouteLength(points) / points.length * 0.0;
+  const restLength = 0.0;
   const { norm, normalize, distance, argMax } = MathHelpers;
 
   function springForce(vec) {
     const dir = normalize(vec);
-    return math.multiply(dir, (restLength - norm(vec))**2 * springConstant);
+    return math.multiply(dir, -(restLength - norm(vec)) * springConstant);
   }
 
-  for (let itr = 0; itr < iterations; ++itr) {
-    let idx = 0;
-    let prev = points[points.length-1];
-    points = points.map(point => {
-      const closestTrackPointIndex = argMax(
-        trackPoints.map(p => -distance(p, point)));
+  let itr = 0;
+  let idx = 0;
+  let newPoints;
+  let prev;
 
-      const trackVec = math.subtract(trackPoints[closestTrackPointIndex], point);
-      const normal = normalize(trackVec);
-      const trackDist = Math.max(0.0, norm(trackVec) - trackWidth);
+  function work() {
+    if (idx === 0) {
+      prev = points[points.length-1];
+      newPoints = [];
+    }
 
-      const next = points[++idx % points.length];
+    const point = points[idx];
 
-      const F = math.add(
-        springForce(math.subtract(prev, point)),
-        springForce(math.subtract(next, point)),
-        math.multiply(trackVec, trackDist ** 2 * trackConstraintSpringConstant));
+    const closestTrackPointIndex = argMax(
+      trackPoints.map(p => -distance(p, point)));
 
-      //console.log(F);
-      prev = point;
-      return math.add(point, math.multiply(F, dt));
-    });
+    const trackVec = math.subtract(trackPoints[closestTrackPointIndex], point);
+    const normal = normalize(trackVec);
+    const trackDist = Math.max(0.0, norm(trackVec) - trackWidth*0.7);
+
+    const next = points[(idx+1) % points.length];
+
+    const F = math.add(
+      springForce(math.subtract(prev, point)),
+      springForce(math.subtract(next, point)),
+      math.multiply(trackVec, trackDist * trackConstraintSpringConstant));
+
+    const dt = stepSize * (1.0 - itr/iterations);
+    newPoints.push(math.add(point, math.multiply(F, dt)));
+
+    prev = point;
+    if (++idx === points.length) {
+      console.log(`new route ${itr}`);
+      itr++;
+      points = newPoints;
+      idx = 0;
+      return true;
+    }
+    return false;
   }
 
-  return points;
+  return () => {
+    const ready = work() || work() || work();
+    return {
+      ready,
+      final: itr >= iterations,
+      route: points
+    };
+  };
 }
 
 function planVelocities(trackPoints, carProperties, {
   minVelocity = 5.0,
-  safetyMarginBank = 0.95,
+  safetyMarginBank = 0.9,
   safetyMarginBrake = 0.9
 } = {}) {
   const maxAcceleration = carProperties.staticFriction * carProperties.gravity * safetyMarginBank;
@@ -162,27 +186,41 @@ function planVelocities(trackPoints, carProperties, {
   return maxVelocities;
 }
 
-function plannedVelocityPidSteering(trackPoints, carProperties, options = {}) {
-  const maxVelocities = planVelocities(trackPoints, carProperties, options);
-  const func = pidSteering(trackPoints, { targetVelocity: maxVelocities });
-
-  func.visualization = {
-    track: trackPoints,
-    velocities: maxVelocities
-  };
-
-  return func;
-}
-
 function plannedVelocityRubberBandPidSteering(trackPoints, trackWidth, carProperties, options = { minVelocity: 1.0 }) {
-  const route = rubberBandRoute(trackPoints, trackWidth);
-  const maxVelocities = planVelocities(route, carProperties, options);
-  const func = pidSteering(route, { targetVelocity: maxVelocities });
+  const routeOptimizer = rubberBandRouteOptimizer(trackPoints, trackWidth*0.5 - carProperties.width);
 
-  func.visualization = {
-    track: route,
+  // a bit of a hack: allow modifying these in place elsewhere so that
+  // steering always uses the latest version of the, possibly changed track
+  // and velocities
+  let route = [...trackPoints];
+  let maxVelocities = trackPoints.map(() => 1);
+
+  const steering = pidSteering(route, { targetVelocity: maxVelocities });
+
+  let version = 0;
+  let finished;
+  const func = (car, dt) => {
+    changed = false;
+    if (!finished) {
+      const curRoute = routeOptimizer();
+      if (curRoute.ready) {
+        version++;
+        finished = curRoute.final;
+        const curMaxVelocities = planVelocities(route, carProperties, options);
+        for (let i = 0; i < route.length; ++i) {
+          route[i] = curRoute.route[i];
+          maxVelocities[i] = curMaxVelocities[i];
+        }
+      }
+    }
+    return steering(car, dt);
+  }
+
+  func.visualization = () => ({
+    version, // to only render when changed
+    route,
     velocities: maxVelocities
-  };
+  });
 
   return func;
 }
