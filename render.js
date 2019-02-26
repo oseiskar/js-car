@@ -126,8 +126,8 @@ function buildTrackRenderer(track, svg, width, height) {
       .attr('fill', color)
       .html('&bull; ' + htmlEscape(car.name));
 
-    //const visu = car.steering.visualization;
-    //if (visu) addAiPlanVisualization(aiVisus, visu, scale);
+    const visu = car.steering.visualization;
+    if (visu) addAiPlanVisualization(aiVisus, visu, scale);
 
     return buildCarRenderer(car.model, trackCoords, color);
   });

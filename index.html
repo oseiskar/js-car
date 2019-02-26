@@ -22,7 +22,10 @@ const scale = 0.3;
 const track = new Track({ widthMeters: 5 / scale, heightMeters: 4 / scale });
 track.addCar(manualSteering(), 'You');
 track.addCar(pidSteering(track.points), 'Fixed-velocity PID');
-track.addCar(plannedVelocityPidSteering(track.points, track.cars[0].model.properties), 'Planned-velocity PID');
+//track.addCar(plannedVelocityPidSteering(track.points, track.cars[0].model.properties), 'Planned-velocity PID');
+track.addCar(plannedVelocityRubberBandPidSteering(
+  track.points, track.trackWidth, track.cars[0].model.properties),
+  'Planned-route PID');
 
 const svg = d3.select('svg');
 const renderer = buildTrackRenderer(track, svg,
