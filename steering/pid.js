@@ -1,7 +1,7 @@
 // returns a function (carState, dt) => controls
 function pidSteering(trackPoints, {
   targetVelocity = 8.0,
-  targetPointOffset = 5,
+  targetPointOffset = 2,
   restrictAngleMargin = 1.2,
   velocityPid = {
     p: 1.0
@@ -43,9 +43,18 @@ function pidSteering(trackPoints, {
 
     const targetIndex = (closestTrackPointIndex + targetPointOffset) % trackPoints.length;
     const targetPoint = trackPoints[targetIndex];
-    const targetDistance = norm(targetPoint, car.pos);
-    const targetVec = normalize(math.subtract(targetPoint, car.pos));
-    const angleDeviation = Math.asin(cross2d(targetVec, car.getForwardDir()));
+    const trackPointVector = math.subtract(targetPoint, car.pos);
+
+    const trackDirection = normalize(math.subtract(
+      trackPoints[(targetIndex + 1) % trackPoints.length],
+      targetPoint));
+
+    const targetDirection = normalize(math.add(
+      trackDirection,
+      trackPointVector
+    ));
+
+    const angleDeviation = Math.asin(cross2d(targetDirection, car.getForwardDir()));
     const maxAngle = computeMaxSafeAngle(car);
     const targetWheelAngle = MathHelpers.limitAbs(angleDeviation, maxAngle);
 
