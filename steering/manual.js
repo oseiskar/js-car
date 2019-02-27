@@ -1,4 +1,6 @@
+// returns a function (carState, dt) => controls
 function manualSteering() {
+  
   const keyControls = {};
 
   const keymap = {

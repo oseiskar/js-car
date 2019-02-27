@@ -9,10 +9,14 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/5.9.0/d3.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/5.4.2/math.min.js"></script>
 <script src="math-helpers.js"></script>
-<script src="car.js"></script>
-<script src="manual-steering.js"></script>
-<script src="ai-steering.js"></script>
-<script src="track.js"></script>
+<script src="physics/car.js"></script>
+<script src="physics/track.js"></script>
+<script src="route-planning/helpers.js"></script>
+<script src="route-planning/velocities.js"></script>
+<script src="route-planning/rubber-band.js"></script>
+<script src="steering/manual.js"></script>
+<script src="steering/pid.js"></script>
+<script src="steering/ai.js"></script>
 <script src="render.js"></script>
 <script>
 
@@ -45,7 +49,7 @@ function draw() {
   const curDt = (t - t0) * 1e-3;
 
   if (curDt > MAX_DT) {
-    console.log('animation paused or in background');
+    console.log('animation slow, paused or in background');
   } else {
     deltaTime += curDt;
   }
