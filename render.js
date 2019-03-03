@@ -64,6 +64,8 @@ function buildAiPlanVisualizer(coords, visualizationGenerator, scale) {
   return () => {
     const data = visualizationGenerator();
     if (!data || !data.route || data.version === renderedVersion) return;
+    renderedVersion = data.version;
+
     group.selectAll('circle').remove();
     group.selectAll('circle')
       .data(data.route)
