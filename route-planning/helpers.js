@@ -1,5 +1,5 @@
 const RouteHelpers = {
-  computeInverseCurvature(points) {
+  computeCurvature(points) {
     const { normalize, norm, cross2d } = MathHelpers;
     let prev = points[points.length-1];
     let idx = 0;

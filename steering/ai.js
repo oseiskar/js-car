@@ -7,7 +7,10 @@ function plannedVelocityRubberBandPidSteering(trackPoints, trackWidth, carProper
   let route = [...trackPoints];
   let maxVelocities = trackPoints.map(() => 1);
 
-  const steering = pidSteering(route, { targetVelocity: maxVelocities });
+  const steering = pidSteering(route, {
+    targetVelocity: maxVelocities,
+    anglePid: { p: 15 }
+  });
 
   let version = 0;
   let finished;
