@@ -19,11 +19,11 @@
 <script src="steering/ai.js"></script>
 <script src="render.js"></script>
 <script>
+'use strict';
 
 console.log('-----begin-----');
 
-const scale = 0.3;
-const track = new Track({ widthMeters: 5 / scale, heightMeters: 4 / scale });
+const track = new Track();
 track.addCar(manualSteering(), 'You');
 track.addCar(pidSteering(track.points), 'Fixed-velocity PID');
 //track.addCar(plannedVelocityPidSteering(track.points, track.cars[0].model.properties), 'Planned-velocity PID');
@@ -38,8 +38,6 @@ const renderer = buildTrackRenderer(track, svg,
 
 let t = new Date();
 let deltaTime = 0.0;
-
-const physicsDt = 0.01;
 
 function draw() {
   const MAX_DT = 0.2;
@@ -59,9 +57,9 @@ function draw() {
     deltaTime = 0;
   }
 
-  while (deltaTime >= physicsDt) {
-    deltaTime -= physicsDt;
-    track.move(physicsDt);
+  while (deltaTime >= track.deltaT) {
+    deltaTime -= track.deltaT;
+    track.move();
   }
 
   renderer();
