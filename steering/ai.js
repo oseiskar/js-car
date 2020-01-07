@@ -1,3 +1,4 @@
+/* globals rubberBandRouteOptimizer, pidSteering, planVelocities */
 function plannedVelocityRubberBandPidSteering(trackPoints, trackWidth, carProperties, options = { minVelocity: 1.0 }) {
   const routeOptimizer = rubberBandRouteOptimizer(trackPoints, trackWidth*0.5 - carProperties.width);
 
@@ -15,7 +16,6 @@ function plannedVelocityRubberBandPidSteering(trackPoints, trackWidth, carProper
   let version = 0;
   let finished;
   const func = (car, dt) => {
-    changed = false;
     if (!finished) {
       const curRoute = routeOptimizer();
       if (curRoute.ready) {

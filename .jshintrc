@@ -6,9 +6,6 @@
     "window": true,
     "console": true,
     "math": true,
-    "MathHelpers": true,
-    "RouteHelpers": true,
-    "Car": true,
-    "Track": true
+    "MathHelpers": true
   }
 }

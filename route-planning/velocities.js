@@ -1,3 +1,4 @@
+/* globals RouteHelpers */
 function planVelocities(trackPoints, carProperties, {
   safetyMarginBank = 0.9,
   safetyMarginBrake = 0.9

@@ -1,3 +1,4 @@
+/* globals Car */
 // generates a normally distributed random variable
 function randnBoxMuller(rng) {
   let u = 0; let v = 0;
