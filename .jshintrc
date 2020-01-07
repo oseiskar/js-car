@@ -1,3 +1,14 @@
 {
-  "esversion": 9
+  "esversion": 9,
+  "strict": "implied",
+  "globals": {
+    "document": true,
+    "window": true,
+    "console": true,
+    "math": true,
+    "MathHelpers": true,
+    "RouteHelpers": true,
+    "Car": true,
+    "Track": true
+  }
 }

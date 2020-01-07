@@ -1,3 +1,4 @@
+/* globals d3 */
 function buildCarRenderer(car, trackCoords, color) {
   const carCoords = trackCoords.append('g');
 
