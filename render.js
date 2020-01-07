@@ -147,7 +147,7 @@ function buildTrackRenderer(track, svg, width, height) {
     return () => {
       renderAiPlan();
       renderCar();
-    }
+    };
   });
 
   return () => {

@@ -241,11 +241,11 @@ function Car() {
 
   this.getSpeed = () => {
     return norm(this.v);
-  }
+  };
 
   this.getForwardDir = () => {
     return [Math.cos(this.rot), Math.sin(this.rot)];
-  }
+  };
 
   this.applyImpulse = (point, impulse) => {
     const r = math.subtract(point, this.pos);

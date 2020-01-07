@@ -29,7 +29,7 @@ function plannedVelocityRubberBandPidSteering(trackPoints, trackWidth, carProper
       }
     }
     return steering(car, dt);
-  }
+  };
 
   func.visualization = () => ({
     version, // to only render when changed

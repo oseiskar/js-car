@@ -26,7 +26,7 @@ const MathHelpers = {
         maxX = x;
         bestI = i;
       }
-    };
+    }
     return bestI;
   },
 

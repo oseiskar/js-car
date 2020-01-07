@@ -22,7 +22,7 @@ function pidSteering(trackPoints, {
       }
       prevX = x;
       return x * p + xIntegral * i + dx * d;
-    }
+    };
   }
 
   function computeMaxSafeAngle(car) {
