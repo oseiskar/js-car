@@ -1,3 +1,5 @@
+importScripts('./velocities.js', './helpers.js', '../math-helpers.js', '//cdnjs.cloudflare.com/ajax/libs/mathjs/5.4.2/math.min.js');
+
 function rubberBandRouteOptimizer(trackPoints, trackWidth, {
   iterations = 60,
   springConstant = 2.0,
@@ -55,8 +57,9 @@ function rubberBandRouteOptimizer(trackPoints, trackWidth, {
     return false;
   }
 
-  return () => {
-    const ready = work() || work() || work();
+  return (nIterations = 1) => {
+    let ready = false;
+    for (let i=0; i<nIterations && !ready; ++i) ready = ready || work();
     return {
       ready,
       final: itr >= iterations,
@@ -64,3 +67,20 @@ function rubberBandRouteOptimizer(trackPoints, trackWidth, {
     };
   };
 }
+
+onmessage = function (e) {
+  const { trackPoints, options, carProperties, width } = e.data;
+  const optimizer = rubberBandRouteOptimizer(trackPoints, width);
+
+  let result;
+  do {
+    const nIterationsPerBatch = 5;
+    result = optimizer(nIterationsPerBatch);
+    if (result.ready) {
+      postMessage({
+        route: result.route,
+        maxVelocities: planVelocities(result.route, carProperties, options),
+      });
+    }
+  } while (!result.final);
+};

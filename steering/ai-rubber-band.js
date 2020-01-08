@@ -1,6 +1,12 @@
 /* globals rubberBandRouteOptimizer, pidSteering, planVelocities */
 function plannedVelocityRubberBandPidSteering(trackPoints, trackWidth, carProperties, options = { minVelocity: 1.0 }) {
-  const routeOptimizer = rubberBandRouteOptimizer(trackPoints, trackWidth*0.5 - carProperties.width);
+  const routeOptimizer = new Worker('./route-planning/rubber-band.js');
+  routeOptimizer.postMessage({
+    trackPoints,
+    options,
+    carProperties,
+    width: trackWidth*0.5 - carProperties.width
+  });
 
   // a bit of a hack: allow modifying these in place elsewhere so that
   // steering always uses the latest version of the, possibly changed track
@@ -14,28 +20,22 @@ function plannedVelocityRubberBandPidSteering(trackPoints, trackWidth, carProper
   });
 
   let version = 0;
-  let finished;
-  const func = (car, dt) => {
-    if (!finished) {
-      const curRoute = routeOptimizer();
-      if (curRoute.ready) {
-        version++;
-        finished = curRoute.final;
-        const curMaxVelocities = planVelocities(route, carProperties, options);
-        for (let i = 0; i < route.length; ++i) {
-          route[i] = curRoute.route[i];
-          maxVelocities[i] = curMaxVelocities[i];
-        }
-      }
+
+  routeOptimizer.onmessage = function (e) {
+    console.log(e.data);
+    const { route: curRoute, maxVelocities: curMaxVelocities } = e.data;
+    for (let i = 0; i < route.length; ++i) {
+      route[i] = curRoute[i];
+      maxVelocities[i] = curMaxVelocities[i];
     }
-    return steering(car, dt);
+    version++;
   };
 
-  func.visualization = () => ({
+  steering.visualization = () => ({
     version, // to only render when changed
     route,
     velocities: maxVelocities
   });
 
-  return func;
+  return steering;
 }

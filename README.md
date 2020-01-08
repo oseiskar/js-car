@@ -29,7 +29,7 @@ forces to the left and right wheel on each axle, i.e.,
 ### AI drivers
 
  * PID control with a few tricks
- * Route planning with an ad-hoc "rubber band model"
+ * Route planning with an ad-hoc "rubber band model" (uses a web worker)
 
 *TODO*
 

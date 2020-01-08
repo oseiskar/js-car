@@ -6,6 +6,7 @@
     "window": true,
     "console": true,
     "math": true,
+    "Worker": true,
     "MathHelpers": true
   }
 }
