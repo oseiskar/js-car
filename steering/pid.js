@@ -1,3 +1,17 @@
+function pidControl({ p = 0.0, i = 0.0, d = 0.0 } = {}) {
+  let prevX;
+  let xIntegral = 0.0;
+  return (x, dt) => {
+    xIntegral += x*dt;
+    let dx = 0.0;
+    if (dt > 0.0 && prevX !== undefined) {
+      dx = (x - prevX) / dt;
+    }
+    prevX = x;
+    return x * p + xIntegral * i + dx * d;
+  };
+}
+
 // returns a function (carState, dt) => controls
 function pidSteering(trackPoints, {
   targetVelocity = 8.0,
@@ -10,21 +24,6 @@ function pidSteering(trackPoints, {
     p: 10.0
   }
 } = {}) {
-
-  function pidControl({ p = 0.0, i = 0.0, d = 0.0 } = {}) {
-    let prevX;
-    let xIntegral = 0.0;
-    return (x, dt) => {
-      xIntegral += x*dt;
-      let dx = 0.0;
-      if (dt > 0.0 && prevX !== undefined) {
-        dx = (x - prevX) / dt;
-      }
-      prevX = x;
-      return x * p + xIntegral * i + dx * d;
-    };
-  }
-
   function computeMaxSafeAngle(car) {
     if (!restrictAngleMargin) return 1000;
     const { gravity, length, staticFriction, maxWheelAngle } = car.properties;

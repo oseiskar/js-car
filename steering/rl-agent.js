@@ -14,168 +14,108 @@
  * limitations under the License.
  * =============================================================================
  */
+// based on
+// https://github.com/tensorflow/tfjs-examples/blob/b789b5e3cca2eb4d2314b6c4129f3588333131c3/cart-pole/index.js
+// see Git commit history for modifications by oseiskar
 
-/**
- * TensorFlow.js Reinforcement Learning Example: Balancing a Cart-Pole System.
- *
- * The simulation, training, testing and visualization parts are written
- * purely in JavaScript and can run in the web browser with WebGL acceleration.
- *
- * This reinforcement learning (RL) problem was proposed in:
- *
- * - Barto, Sutton, and Anderson, "Neuronlike Adaptive Elements That Can Solve
- *   Difficult Learning Control Problems," IEEE Trans. Syst., Man, Cybern.,
- *   Vol. SMC-13, pp. 834--846, Sept.--Oct. 1983
- * - Sutton, "Temporal Aspects of Credit Assignment in Reinforcement Learning",
- *   Ph.D. Dissertation, Department of Computer and Information Science,
- *   University of Massachusetts, Amherst, 1984.
- *
- * It later became one of OpenAI's gym environmnets:
- *   https://github.com/openai/gym/blob/master/gym/envs/classic_control/cartpole.py
- */
+ /* globals tf */
 
-import * as tf from '@tensorflow/tfjs';
-
-import {maybeRenderDuringTraining, onGameEnd, setUpUI} from './ui';
-
-/**
- * Policy network for controlling the cart-pole system.
- *
- * The role of the policy network is to select an action based on the observed
- * state of the system. In this case, the action is the leftward or rightward
- * force and the observed system state is a four-dimensional vector, consisting
- * of cart position, cart velocity, pole angle and pole angular velocity.
- *
- */
 class PolicyNetwork {
   /**
-   * Constructor of PolicyNetwork.
-   *
-   * @param {number | number[] | tf.LayersModel} hiddenLayerSizes
-   *   Can be any of the following
-   *   - Size of the hidden layer, as a single number (for a single hidden
-   *     layer)
-   *   - An Array of numbers (for any number of hidden layers).
-   *   - An instance of tf.LayersModel.
-   */
-  constructor(hiddenLayerSizesOrModel) {
-    if (hiddenLayerSizesOrModel instanceof tf.LayersModel) {
-      this.policyNet = hiddenLayerSizesOrModel;
-    } else {
-      this.createPolicyNetwork(hiddenLayerSizesOrModel);
-    }
-  }
-
-  /**
    * Create the underlying model of this policy network.
-   *
-   * @param {number | number[]} hiddenLayerSizes Size of the hidden layer, as
-   *   a single number (for a single hidden layer) or an Array of numbers (for
-   *   any number of hidden layers).
    */
-  createPolicyNetwork(hiddenLayerSizes) {
-    if (!Array.isArray(hiddenLayerSizes)) {
-      hiddenLayerSizes = [hiddenLayerSizes];
-    }
+  constructor({ inputs, outputs = 1 } = {}) {
+    const hiddenLayerSizes = [6];
+    const learningRate = 0.05;
+
     this.policyNet = tf.sequential();
     hiddenLayerSizes.forEach((hiddenLayerSize, i) => {
       this.policyNet.add(tf.layers.dense({
         units: hiddenLayerSize,
         activation: 'elu',
         // `inputShape` is required only for the first layer.
-        inputShape: i === 0 ? [4] : undefined
+        inputShape: i === 0 ? [inputs] : undefined
       }));
     });
+    // TODO
     // The last layer has only one unit. The single output number will be
     // converted to a probability of selecting the leftward-force action.
     this.policyNet.add(tf.layers.dense({units: 1}));
+
+    this.allGradients = [];
+    this.allRewards = [];
+
+    this.curGradients = [];
+    this.curRewards = [];
+
+    this.optimizer = tf.train.adam(learningRate);
   }
-
   /**
-   * Train the policy network's model.
+   * Create the underlying model of this policy network.
    *
-   * @param {CartPole} cartPoleSystem The cart-pole system object to use during
-   *   training.
-   * @param {tf.train.Optimizer} optimizer An instance of TensorFlow.js
-   *   Optimizer to use for training.
-   * @param {number} discountRate Reward discounting rate: a number between 0
-   *   and 1.
-   * @param {number} numGames Number of game to play for each model parameter
-   *   update.
-   * @param {number} maxStepsPerGame Maximum number of steps to perform during
-   *   a game. If this number is reached, the game will end immediately.
-   * @returns {number[]} The number of steps completed in the `numGames` games
-   *   in this round of training.
+   * @param {number[]} inputVector Observed state
+   * @param {number} lastReward Latest reward
+   * @returns chosen action
    */
-  async train(
-      cartPoleSystem, optimizer, discountRate, numGames, maxStepsPerGame) {
-    const allGradients = [];
-    const allRewards = [];
-    const gameSteps = [];
-    onGameEnd(0, numGames);
-    for (let i = 0; i < numGames; ++i) {
-      // Randomly initialize the state of the cart-pole system at the beginning
-      // of every game.
-      cartPoleSystem.setRandomState();
-      const gameRewards = [];
-      const gameGradients = [];
-      for (let j = 0; j < maxStepsPerGame; ++j) {
-        // For every step of the game, remember gradients of the policy
-        // network's weights with respect to the probability of the action
-        // choice that lead to the reward.
-        const gradients = tf.tidy(() => {
-          const inputTensor = cartPoleSystem.getStateTensor();
-          return this.getGradientsAndSaveActions(inputTensor).grads;
-        });
+  push(inputVector, lastReward) {
+    const discountRate = 0.95;
 
-        this.pushGradients(gameGradients, gradients);
-        const action = this.currentActions_[0];
-        const isDone = cartPoleSystem.update(action);
+    const batchEvery = 100;
+    const trainEvery = 1;
 
-        await maybeRenderDuringTraining(cartPoleSystem);
-
-        if (isDone) {
-          // When the game ends before max step count is reached, a reward of
-          // 0 is given.
-          gameRewards.push(0);
-          break;
-        } else {
-          // As long as the game doesn't end, each step leads to a reward of 1.
-          // These reward values will later be "discounted", leading to
-          // higher reward values for longer-lasting games.
-          gameRewards.push(1);
-        }
-      }
-      onGameEnd(i + 1, numGames);
-      gameSteps.push(gameRewards.length);
-      this.pushGradients(allGradients, gameGradients);
-      allRewards.push(gameRewards);
-      await tf.nextFrame();
-    }
-
-    tf.tidy(() => {
-      // The following line does three things:
-      // 1. Performs reward discounting, i.e., make recent rewards count more
-      //    than rewards from the further past. The effect is that the reward
-      //    values from a game with many steps become larger than the values
-      //    from a game with fewer steps.
-      // 2. Normalize the rewards, i.e., subtract the global mean value of the
-      //    rewards and divide the result by the global standard deviation of
-      //    the rewards. Together with step 1, this makes the rewards from
-      //    long-lasting games positive and rewards from short-lasting
-      //    negative.
-      // 3. Scale the gradients with the normalized reward values.
-      const normalizedRewards =
-          discountAndNormalizeRewards(allRewards, discountRate);
-      // Add the scaled gradients to the weights of the policy network. This
-      // step makes the policy network more likely to make choices that lead
-      // to long-lasting games in the future (i.e., the crux of this RL
-      // algorithm.)
-      optimizer.applyGradients(
-          scaleAndAverageGradients(allGradients, normalizedRewards));
+    // For every step of the game, remember gradients of the policy
+    // network's weights with respect to the probability of the action
+    // choice that lead to the reward.
+    const gradients = tf.tidy(() => {
+      const inputTensor = tf.tensor2d([inputVector]);
+      return this.getGradientsAndSaveActions(inputTensor).grads;
     });
-    tf.dispose(allGradients);
-    return gameSteps;
+
+    this.pushGradients(this.curGradients, gradients);
+    //const action = this.currentActions_[0];
+
+    this.curRewards.push(lastReward);
+
+    if (this.curRewards.length >= batchEvery) {
+      console.log("saving batch");
+
+      this.pushGradients(this.allGradients, this.curGradients);
+      this.allRewards.push(this.curRewards);
+
+      this.curRewards = [];
+      this.curGradients = [];
+
+      if (this.allRewards.length >= trainEvery) {
+        console.log("training...");
+        tf.tidy(() => {
+          // The following line does three things:
+          // 1. Performs reward discounting, i.e., make recent rewards count more
+          //    than rewards from the further past. The effect is that the reward
+          //    values from a game with many steps become larger than the values
+          //    from a game with fewer steps.
+          // 2. Normalize the rewards, i.e., subtract the global mean value of the
+          //    rewards and divide the result by the global standard deviation of
+          //    the rewards. Together with step 1, this makes the rewards from
+          //    long-lasting games positive and rewards from short-lasting
+          //    negative.
+          // 3. Scale the gradients with the normalized reward values.
+          const normalizedRewards =
+              discountAndNormalizeRewards(this.allRewards, discountRate);
+          // Add the scaled gradients to the weights of the policy network. This
+          // step makes the policy network more likely to make choices that lead
+          // to long-lasting games in the future (i.e., the crux of this RL
+          // algorithm.)
+          this.optimizer.applyGradients(
+              scaleAndAverageGradients(this.allGradients, normalizedRewards));
+        });
+        tf.dispose(this.allGradients);
+        this.allGradients = [];
+        this.allRewards = [];
+
+        return true;
+      }
+    }
+    return false;
   }
 
   getGradientsAndSaveActions(inputTensor) {
@@ -196,7 +136,7 @@ class PolicyNetwork {
   /**
    * Get policy-network logits and the action based on state-tensor inputs.
    *
-   * @param {tf.Tensor} inputs A tf.Tensor instance of shape `[batchSize, 4]`.
+   * @param {tf.Tensor} inputs A tf.Tensor instance of shape `[batchSize, nInputs]`.
    * @returns {[tf.Tensor, tf.Tensor]}
    *   1. The logits tensor, of shape `[batchSize, 1]`.
    *   2. The actions tensor, of shape `[batchSize, 1]`.
@@ -217,12 +157,16 @@ class PolicyNetwork {
   /**
    * Get actions based on a state-tensor input.
    *
-   * @param {tf.Tensor} inputs A tf.Tensor instance of shape `[batchSize, 4]`.
+   * @param {tf.Tensor} inputs A tf.Tensor instance of shape `[batchSize, nInputs]`.
    * @param {Float32Array} inputs The actions for the inputs, with length
    *   `batchSize`.
    */
   getActions(inputs) {
     return this.getLogitsAndActions(inputs)[1].dataSync();
+  }
+
+  getAction(input) {
+    return this.getActions(tf.tensor2d([input]))[0];
   }
 
   /**
@@ -242,82 +186,6 @@ class PolicyNetwork {
         record[key] = [gradients[key]];
       }
     }
-  }
-}
-
-// The IndexedDB path where the model of the policy network will be saved.
-const MODEL_SAVE_PATH_ = 'indexeddb://cart-pole-v1';
-
-/**
- * A subclass of PolicyNetwork that supports saving and loading.
- */
-export class SaveablePolicyNetwork extends PolicyNetwork {
-  /**
-   * Constructor of SaveablePolicyNetwork
-   *
-   * @param {number | number[]} hiddenLayerSizesOrModel
-   */
-  constructor(hiddenLayerSizesOrModel) {
-    super(hiddenLayerSizesOrModel);
-  }
-
-  /**
-   * Save the model to IndexedDB.
-   */
-  async saveModel() {
-    return await this.policyNet.save(MODEL_SAVE_PATH_);
-  }
-
-  /**
-   * Load the model fom IndexedDB.
-   *
-   * @returns {SaveablePolicyNetwork} The instance of loaded
-   *   `SaveablePolicyNetwork`.
-   * @throws {Error} If no model can be found in IndexedDB.
-   */
-  static async loadModel() {
-    const modelsInfo = await tf.io.listModels();
-    if (MODEL_SAVE_PATH_ in modelsInfo) {
-      console.log(`Loading existing model...`);
-      const model = await tf.loadLayersModel(MODEL_SAVE_PATH_);
-      console.log(`Loaded model from ${MODEL_SAVE_PATH_}`);
-      return new SaveablePolicyNetwork(model);
-    } else {
-      throw new Error(`Cannot find model at ${MODEL_SAVE_PATH_}.`);
-    }
-  }
-
-  /**
-   * Check the status of locally saved model.
-   *
-   * @returns If the locally saved model exists, the model info as a JSON
-   *   object. Else, `undefined`.
-   */
-  static async checkStoredModelStatus() {
-    const modelsInfo = await tf.io.listModels();
-    return modelsInfo[MODEL_SAVE_PATH_];
-  }
-
-  /**
-   * Remove the locally saved model from IndexedDB.
-   */
-  async removeModel() {
-    return await tf.io.removeModel(MODEL_SAVE_PATH_);
-  }
-
-  /**
-   * Get the sizes of the hidden layers.
-   *
-   * @returns {number | number[]} If the model has only one hidden layer,
-   *   return the size of the layer as a single number. If the model has
-   *   multiple hidden layers, return the sizes as an Array of numbers.
-   */
-  hiddenLayerSizes() {
-    const sizes = [];
-    for (let i = 0; i < this.policyNet.layers.length - 1; ++i) {
-      sizes.push(this.policyNet.layers[i].units);
-    }
-    return sizes.length === 1 ? sizes[0] : sizes;
   }
 }
 
@@ -359,7 +227,7 @@ function discountAndNormalizeRewards(rewardSequences, discountRate) {
   return tf.tidy(() => {
     const discounted = [];
     for (const sequence of rewardSequences) {
-      discounted.push(discountRewards(sequence, discountRate))
+      discounted.push(discountRewards(sequence, discountRate));
     }
     // Compute the overall mean and stddev.
     const concatenated = tf.concat(discounted);
@@ -414,5 +282,3 @@ function scaleAndAverageGradients(allGradients, normalizedRewards) {
     return gradients;
   });
 }
-
-setUpUI();
