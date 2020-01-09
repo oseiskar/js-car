@@ -22,7 +22,6 @@ function plannedVelocityRubberBandPidSteering(trackPoints, trackWidth, carProper
   let version = 0;
 
   routeOptimizer.onmessage = function (e) {
-    console.log(e.data);
     const { route: curRoute, maxVelocities: curMaxVelocities } = e.data;
     for (let i = 0; i < route.length; ++i) {
       route[i] = curRoute[i];
