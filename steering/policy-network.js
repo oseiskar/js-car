@@ -25,9 +25,9 @@ class PolicyNetwork {
    * Create the underlying model of this policy network.
    */
   constructor({ inputs, outputs = 1 } = {}) {
-    const hiddenLayerSizes = [4];
+    const hiddenLayerSizes = [6];
     const learningRate = 0.05;
-    this.discountRate = 0.99;
+    this.discountRate = 0.995;
 
     this.policyNet = tf.sequential();
     hiddenLayerSizes.forEach((hiddenLayerSize, i) => {

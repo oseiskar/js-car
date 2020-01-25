@@ -44,8 +44,13 @@ function OfflineTrainer(saveCallback, { networkOptions, trackData }) {
     track.addCar(buildSteering(trackPoints, episodeTrack));
 
     const maxSteps = 2000;
+    let negatives = 0;
     for (let i = 0; i < maxSteps; ++i) {
       track.move();
+      if (lastReward < 0) {
+        negatives++;
+        if (negatives > 300) break; // fail early if going badly for too long
+      }
       if (track.cars[0].model.collidedTurns > 50) break;
     }
 

@@ -1,6 +1,5 @@
 /* globals PolicyNetwork, pidControl, tf */
 function reinforcementLearningSteering(trackPoints, {
-  targetPointOffset = 8,
   agent = null
 } = {}) {
   const { norm, normalize, argMax, distance } = MathHelpers;
@@ -38,19 +37,21 @@ function reinforcementLearningSteering(trackPoints, {
     const closestTrackPointIndex = argMax(
       trackPoints.map(p => -distance(p, car.pos)));
 
-    const targetIndex = (closestTrackPointIndex + targetPointOffset) % trackPoints.length;
-    const targetPoint = trackPoints[targetIndex];
-    const trackPointVector = math.subtract(targetPoint, car.pos);
-    const trackDistance = norm(trackPointVector);
+    function getTrackVectorsAt(offset) {
+      const targetIndex = (closestTrackPointIndex + offset) % trackPoints.length;
+      const targetPoint = trackPoints[targetIndex];
+      const trackPointVector = math.subtract(targetPoint, car.pos);
+      const trackDistance = norm(trackPointVector);
+      const trackDirection = normalize(math.subtract(
+        trackPoints[(targetIndex + 1) % trackPoints.length],
+        targetPoint));
+      //const targetDirection = normalize(trackPointVector);
 
-    const trackDirection = normalize(math.subtract(
-      trackPoints[(targetIndex + 1) % trackPoints.length],
-      targetPoint));
+      return { trackDistance, trackDirection, trackPointVector };
+    }
 
-    const targetDirection = normalize(math.add(
-      trackDirection,
-      trackPointVector
-    ));
+    const nearPoint = getTrackVectorsAt(2);
+    const farPoint = getTrackVectorsAt(10);
 
     const V_SCALE = 10.0;
     const DIST_SCALE = car.properties.length * 10.0;
@@ -59,11 +60,16 @@ function reinforcementLearningSteering(trackPoints, {
     const relWheelAngle = car.wheelAngle / car.properties.maxWheelAngle;
 
     const inputs = [
-      MathHelpers.cross2d(targetDirection, fwd),
+      MathHelpers.cross2d(nearPoint.trackPointVector, nearPoint.trackDirection) / DIST_SCALE,
+      MathHelpers.cross2d(nearPoint.trackDirection, fwd),
+      MathHelpers.cross2d(farPoint.trackDirection, fwd),
+      curVelocity / V_SCALE,
+      relWheelAngle,
+      //MathHelpers.cross2d(targetDirection, fwd),
       //targetDirection[0],
       //targetDirection[1],
-      trackDistance / DIST_SCALE,
-      relWheelAngle,
+      //trackDistance / DIST_SCALE,
+      //relWheelAngle,
       //curVelocity,
       //fwd[0],
       //fwd[1],
@@ -81,10 +87,11 @@ function reinforcementLearningSteering(trackPoints, {
     nTurn++;
 
     //const lastReward = -Math.abs(relWheelAngle);
-    const dirDot = math.dot(targetDirection, fwd);
+    const dirDot = math.dot(nearPoint.trackDirection, fwd);
     let lastReward = dirDot * curVelocity;
-    lastReward -= Math.abs(relWheelAngle);
+    lastReward -= Math.abs(relWheelAngle) * 0.2;
     if (car.collided) lastReward -= 10;
+    if (car.offTrack) lastReward -= 2;
     if (dirDot < 0) lastReward -= 2;
     /*lastReward -= trackDistance * 0.1;
     //lastReward -= car.collidedTurns * 5;

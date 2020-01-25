@@ -74,7 +74,8 @@ class Track {
   handleOffTrack(car) {
     const minDist = Math.min.apply(Math,
       this.points.map(p => MathHelpers.distance(p, car.pos)));
-    if (minDist > this.trackWidth/2) {
+    car.offTrack = minDist > this.trackWidth/2;
+    if (car.offTrack) {
       car.slowDown();
     }
   }
