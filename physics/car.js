@@ -271,4 +271,8 @@ function Car() {
 
     this.applyImpulse(point, math.multiply(impulse, normal));
   };
+
+  this.slowDown = (factor = 0.02) => {
+      this.v = math.multiply(1.0 - factor, this.v);
+  };
 }

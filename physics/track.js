@@ -8,12 +8,14 @@ function randnBoxMuller(rng) {
 }
 
 class Track {
-  constructor({ widthMeters = 5 / 0.3, heightMeters = 4 / 0.3 } = {}) {
+  constructor({ widthMeters = 5 / 0.3, heightMeters = 4 / 0.3, trackPoints = null, collisions = true, collisionReset = 0 } = {}) {
       this.size = { width: widthMeters, height: heightMeters };
       this.cars = [];
       this.trackWidth = 2.0;
       this.deltaT = 0.01;
-      this.points = this.generateTrackPoints();
+      this.collisionReset = collisionReset;
+      this.collisionsEnabled = collisions;
+      this.points = trackPoints || this.generateTrackPoints();
   }
 
   addCar(steering, name) {
@@ -63,8 +65,17 @@ class Track {
     const dt = this.deltaT;
     this.cars.forEach(car => {
       car.model.move(dt, car.steering(car.model, dt));
-      this.collisions(car.model);
+      this.handleOffTrack(car.model);
+      if (this.collisionsEnabled) this.collisions(car.model);
     });
+  }
+
+  handleOffTrack(car) {
+    const minDist = Math.min.apply(Math,
+      this.points.map(p => MathHelpers.distance(p, car.pos)));
+    if (minDist > this.trackWidth/2) {
+      car.slowDown();
+    }
   }
 
   collisions(car) {
