@@ -25,8 +25,9 @@ class PolicyNetwork {
    * Create the underlying model of this policy network.
    */
   constructor({ inputs, outputs = 1 } = {}) {
-    const hiddenLayerSizes = [6];
+    const hiddenLayerSizes = [4];
     const learningRate = 0.05;
+    this.discountRate = 0.99;
 
     this.policyNet = tf.sequential();
     hiddenLayerSizes.forEach((hiddenLayerSize, i) => {
@@ -58,10 +59,9 @@ class PolicyNetwork {
    * @returns chosen action
    */
   push(inputVector, lastReward) {
-    const discountRate = 0.95;
 
     const batchEvery = 100;
-    const trainEvery = 1;
+    const trainEvery = 2;
 
     // For every step of the game, remember gradients of the policy
     // network's weights with respect to the probability of the action
@@ -72,12 +72,13 @@ class PolicyNetwork {
     });
 
     this.pushGradients(this.curGradients, gradients);
-    //const action = this.currentActions_[0];
+    const action = this.currentActions_[0];
 
     this.curRewards.push(lastReward);
 
+    let trained = false;
     if (this.curRewards.length >= batchEvery) {
-      console.log("saving batch");
+      //console.log("saving batch");
 
       this.pushGradients(this.allGradients, this.curGradients);
       this.allRewards.push(this.curRewards);
@@ -100,7 +101,7 @@ class PolicyNetwork {
           //    negative.
           // 3. Scale the gradients with the normalized reward values.
           const normalizedRewards =
-              discountAndNormalizeRewards(this.allRewards, discountRate);
+              discountAndNormalizeRewards(this.allRewards, this.discountRate);
           // Add the scaled gradients to the weights of the policy network. This
           // step makes the policy network more likely to make choices that lead
           // to long-lasting games in the future (i.e., the crux of this RL
@@ -112,10 +113,31 @@ class PolicyNetwork {
         this.allGradients = [];
         this.allRewards = [];
 
-        return true;
+        trained = true;
       }
     }
-    return false;
+    return { action, trained };
+  }
+
+  endEpisode() {
+    //console.log("saving batch");
+
+    this.pushGradients(this.allGradients, this.curGradients);
+    this.allRewards.push(this.curRewards);
+
+    this.curRewards = [];
+    this.curGradients = [];
+
+    console.log("training, episode end");
+    tf.tidy(() => {
+      const normalizedRewards =
+          discountAndNormalizeRewards(this.allRewards, this.discountRate);
+      this.optimizer.applyGradients(
+          scaleAndAverageGradients(this.allGradients, normalizedRewards));
+    });
+    tf.dispose(this.allGradients);
+    this.allGradients = [];
+    this.allRewards = [];
   }
 
   getGradientsAndSaveActions(inputTensor) {
@@ -166,7 +188,9 @@ class PolicyNetwork {
   }
 
   getAction(input) {
-    return this.getActions(tf.tensor2d([input]))[0];
+    return tf.tidy(() => {
+      return this.getActions(tf.tensor2d([input]))[0];
+    });
   }
 
   /**

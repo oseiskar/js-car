@@ -36,5 +36,7 @@ function plannedVelocityRubberBandPidSteering(trackPoints, trackWidth, carProper
     velocities: maxVelocities
   });
 
+  steering.stop = () => routeOptimizer.terminate();
+
   return steering;
 }

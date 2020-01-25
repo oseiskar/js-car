@@ -7,6 +7,9 @@
     "console": true,
     "math": true,
     "Worker": true,
-    "MathHelpers": true
+    "MathHelpers": true,
+    "importScripts": true,
+    "postMessage": true,
+    "setTimeout": true
   }
 }

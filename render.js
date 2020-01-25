@@ -51,32 +51,82 @@ function buildCarRenderer(car, trackCoords, color) {
   };
 }
 
-function buildAiPlanVisualizer(coords, visualizationGenerator, scale) {
+function buildAiVisualizer(coords, visualizationGenerator, scale) {
   const group = coords.append('g');
+  function initPlanVisualizer(data) {
+    function velocityColormap(x) {
+      const maxVel = 10;
+      const minVel = 6.0;
+      const rel = Math.max(0.0, Math.min((x-minVel) / (maxVel - minVel), 1.0));
+      return `rgb(${(1.0-rel)*255}, ${rel*255}, 0)`;
+    }
 
-  function velocityColormap(x) {
-    const maxVel = 10;
-    const minVel = 6.0;
-    const rel = Math.max(0.0, Math.min((x-minVel) / (maxVel - minVel), 1.0));
-    return `rgb(${(1.0-rel)*255}, ${rel*255}, 0)`;
+    return (data) => {
+      group.selectAll('circle').remove();
+      group.selectAll('circle')
+        .data(data.route)
+        .enter()
+        .append('circle')
+        .attr('cx', (d, idx) => d[0])
+        .attr('cy', (d, idx) => d[1])
+        .attr('r', 2.0 / scale)
+        .attr('fill-opacity', 0.5)
+        .attr('fill', (_, idx) => velocityColormap(data.velocities[idx]));
+    };
+  }
+
+  function initRlVisualizer(data) {
+    function stride(n, includeEnd = true) {
+      let i = 0;
+      return (array) => array.filter(() => {
+        if (includeEnd && i === array.length - 1) return true;
+        return (i++ % n) === 0;
+      });
+    }
+
+    function rewardColormap(x) {
+      const minReward = -5;
+      const maxReward = 2;
+      const rel = Math.max(0.0, Math.min((x-minReward) / (maxReward - minReward), 1.0));
+      return `rgb(${(1.0-rel)*255}, ${rel*255}, 0)`;
+    }
+
+    return (data) => {
+      group.selectAll('g').remove();
+      group.selectAll('g')
+        .data(data.traces)
+        .enter()
+        .append('g')
+        .selectAll('circle')
+        .data(d => stride(4)(d))
+        .enter()
+        .append('circle')
+        .attr('cx', d => d[0])
+        .attr('cy', d => d[1])
+        .attr('r', 2.0 / scale)
+        .attr('fill-opacity', 0.25)
+        .attr('fill', d => rewardColormap(d[2]));
+    };
+  }
+
+  function init(data) {
+    if (data.route) return initPlanVisualizer(data);
+    if (data.traces) return initRlVisualizer(data);
+    return null;
   }
 
   let renderedVersion;
+  let visualizer;
+
   return () => {
     const data = visualizationGenerator();
-    if (!data || !data.route || data.version === renderedVersion) return;
+    if (!data || data.version === renderedVersion) return;
     renderedVersion = data.version;
 
-    group.selectAll('circle').remove();
-    group.selectAll('circle')
-      .data(data.route)
-      .enter()
-      .append('circle')
-      .attr('cx', (d, idx) => d[0])
-      .attr('cy', (d, idx) => d[1])
-      .attr('r', 2.0 / scale)
-      .attr('fill-opacity', 0.5)
-      .attr('fill', (_, idx) => velocityColormap(data.velocities[idx]));
+    if (!visualizer) visualizer = init(data);
+    if (!visualizer) return;
+
+    visualizer(data);
   };
 }
 
@@ -141,7 +191,7 @@ function buildTrackRenderer(track, svg, width, height) {
 
     const visu = car.steering.visualization;
     const renderAiPlan = visu ?
-      buildAiPlanVisualizer(aiVisus, visu, scale) :
+      buildAiVisualizer(aiVisus, visu, scale) :
       () => {};
 
     const renderCar = buildCarRenderer(car.model, trackCoords, color);

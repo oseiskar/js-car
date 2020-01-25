@@ -7,6 +7,8 @@
 <body>
 <svg width="1000" height="800">
 </svg>
+<br/>
+<button onclick="stop()">Stop</button>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/5.9.0/d3.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/5.4.2/math.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.5.1/dist/tf.min.js"> </script>
@@ -16,13 +18,13 @@
 <script src="steering/manual.js"></script>
 <script src="steering/pid.js"></script>
 <script src="steering/ai-rubber-band.js"></script>
-<script src="steering/rl-agent.js"></script>
+<script src="steering/policy-network.js"></script>
 <script src="steering/ai-rl.js"></script>
 <script src="render.js"></script>
 <script>
 'use strict';
 
-const track = new Track();
+const track = new Track({ collisionReset: 1000 });
 track.addCar(manualSteering(), 'You');
 //track.addCar(pidSteering(track.points), 'Fixed-velocity PID');
 track.addCar(plannedVelocityRubberBandPidSteering(
@@ -37,8 +39,11 @@ const renderer = buildTrackRenderer(track, svg,
 
 let t = new Date();
 let deltaTime = 0.0;
+let stopped = false;
 
 function draw() {
+  if (stopped) return;
+
   const MAX_DT = 0.2;
 
   const t0 = t;
@@ -65,6 +70,11 @@ function draw() {
   requestAnimationFrame(draw);
 }
 draw();
+
+function stop() {
+  stopped = true;
+  track.stop();
+}
 
 </script>
 </body>

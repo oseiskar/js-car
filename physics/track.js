@@ -26,6 +26,7 @@ class Track {
       steering,
       name
     });
+    model.collidedTurns = 0;
   }
 
   generateTrackPoints() {
@@ -87,16 +88,35 @@ class Track {
     // how elastic are the wall collisions
     const coefficientOfRestitution = 0.2;
 
+    car.collided = false;
     car.getPolygon().forEach(p => {
       [0,1].forEach(coord => {
         [-1,1].forEach(side => {
           if (side*p[coord] > bnd[coord]) {
             const normal = [0,0];
             normal[coord] = -side;
+            car.collided = true;
             car.collideToWall(p, normal, coefficientOfRestitution);
           }
         });
       });
+    });
+
+    if (car.collided) {
+      car.collidedTurns++;
+      if (this.collisionReset > 0 && car.collidedTurns > this.collisionReset) {
+        // reset location
+        car.pos = this.points[0];
+        car.rot = Math.PI * 0.5;
+        car.collidedTurns = 0;
+      }
+    }
+
+  }
+
+  stop() {
+    this.cars.forEach(car => {
+      if (car.steering.stop) car.steering.stop();
     });
   }
 }
