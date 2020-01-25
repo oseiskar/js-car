@@ -60,8 +60,7 @@ class PolicyNetwork {
    */
   push(inputVector, lastReward) {
 
-    const batchEvery = 100;
-    const trainEvery = 2;
+    const batchEvery = 200;
 
     // For every step of the game, remember gradients of the policy
     // network's weights with respect to the probability of the action
@@ -85,36 +84,6 @@ class PolicyNetwork {
 
       this.curRewards = [];
       this.curGradients = [];
-
-      if (this.allRewards.length >= trainEvery) {
-        console.log("training...");
-        tf.tidy(() => {
-          // The following line does three things:
-          // 1. Performs reward discounting, i.e., make recent rewards count more
-          //    than rewards from the further past. The effect is that the reward
-          //    values from a game with many steps become larger than the values
-          //    from a game with fewer steps.
-          // 2. Normalize the rewards, i.e., subtract the global mean value of the
-          //    rewards and divide the result by the global standard deviation of
-          //    the rewards. Together with step 1, this makes the rewards from
-          //    long-lasting games positive and rewards from short-lasting
-          //    negative.
-          // 3. Scale the gradients with the normalized reward values.
-          const normalizedRewards =
-              discountAndNormalizeRewards(this.allRewards, this.discountRate);
-          // Add the scaled gradients to the weights of the policy network. This
-          // step makes the policy network more likely to make choices that lead
-          // to long-lasting games in the future (i.e., the crux of this RL
-          // algorithm.)
-          this.optimizer.applyGradients(
-              scaleAndAverageGradients(this.allGradients, normalizedRewards));
-        });
-        tf.dispose(this.allGradients);
-        this.allGradients = [];
-        this.allRewards = [];
-
-        trained = true;
-      }
     }
     return { action, trained };
   }

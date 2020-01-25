@@ -53,6 +53,7 @@ function reinforcementLearningSteering(trackPoints, {
     ));
 
     const V_SCALE = 10.0;
+    const DIST_SCALE = car.properties.length * 10.0;
     const fwd = car.getForwardDir();
     const curVelocity = car.getSpeed();
     const relWheelAngle = car.wheelAngle / car.properties.maxWheelAngle;
@@ -61,7 +62,7 @@ function reinforcementLearningSteering(trackPoints, {
       MathHelpers.cross2d(targetDirection, fwd),
       //targetDirection[0],
       //targetDirection[1],
-      //trackDistance,
+      trackDistance / DIST_SCALE,
       relWheelAngle,
       //curVelocity,
       //fwd[0],
@@ -75,13 +76,16 @@ function reinforcementLearningSteering(trackPoints, {
       //car.slip.back
     ];
 
+    //console.log(inputs);
+
     nTurn++;
 
     //const lastReward = -Math.abs(relWheelAngle);
     const dirDot = math.dot(targetDirection, fwd);
-    let lastReward = dirDot;
+    let lastReward = dirDot * curVelocity;
     lastReward -= Math.abs(relWheelAngle);
-    if (car.collided) lastReward -= 2;
+    if (car.collided) lastReward -= 10;
+    if (dirDot < 0) lastReward -= 2;
     /*lastReward -= trackDistance * 0.1;
     //lastReward -= car.collidedTurns * 5;
     if (dirDot < 0) lastReward -= 2;*/
@@ -104,7 +108,7 @@ function reinforcementLearningSteering(trackPoints, {
     //const [ throttle, wheelTurnSpeed ] = action;
 
     // simple steering model
-    const curTargetVelocity = 1.0;
+    const curTargetVelocity = 3.0;
     const throttle = car.slip.back ? 0.0 : velocityControl(curTargetVelocity - curVelocity, dt);
     const wheelTurnSpeed = (action == 1 ? 1 : -1);
 
