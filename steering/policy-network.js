@@ -25,31 +25,44 @@ class PolicyNetwork {
    * Create the underlying model of this policy network.
    */
   constructor({ inputs, outputs = 1 } = {}) {
-    const hiddenLayerSizes = [6, 4];
-    this.learningRate = 0.07;
-    this.discountRate = 0.998;
-    this.nOutputs = 4;
+    const hiddenLayerSizes = [4];
+    this.learningRate = 0.1;
+    this.discountRate = 0.99;
+    this.nOutputs = 2;
+    this.gaussianStdev = 0.3;
+    this.rollingAverageRewardNormalization = true;
 
     this.policyNet = tf.sequential();
     hiddenLayerSizes.forEach((hiddenLayerSize, i) => {
       this.policyNet.add(tf.layers.dense({
         units: hiddenLayerSize,
+        //activation: 'sigmoid',
         activation: 'elu',
         // `inputShape` is required only for the first layer.
         inputShape: i === 0 ? [inputs] : undefined
       }));
     });
-    // Logits for each possible action
-    this.policyNet.add(tf.layers.dense({units: this.nOutputs}));
+    // Predicts the means of the Gaussian policy
+    this.policyNet.add(tf.layers.dense({units: this.nOutputs }));
 
     this.allGradients = [];
     this.allRewards = [];
 
     this.curGradients = [];
     this.curRewards = [];
+    this.nTurn = 0;
 
     this.optimizer = tf.train.adam(this.learningRate);
+    this.nEpisodes = 0;
   }
+
+  actionsAsArray(actions) {
+    // convert FloatArray to regular array
+    const arr = [];
+    for (let i = 0; i < this.nOutputs; ++i) arr.push(actions[i]);
+    return arr;
+  }
+
   /**
    * Create the underlying model of this policy network.
    *
@@ -58,10 +71,6 @@ class PolicyNetwork {
    * @returns chosen action
    */
   push(inputVector, lastReward) {
-
-    const batchEvery = 200;
-    this.lastInputVector = inputVector;
-
     // For every step of the game, remember gradients of the policy
     // network's weights with respect to the probability of the action
     // choice that lead to the reward.
@@ -70,22 +79,19 @@ class PolicyNetwork {
       return this.getGradientsAndSaveActions(inputTensor).grads;
     });
 
+    const actions = this.actionsAsArray(this.currentActions_);
     this.pushGradients(this.curGradients, gradients);
-    const action = this.currentActions_[0];
-
-    this.curRewards.push(lastReward);
-
-    let trained = false;
-    if (this.curRewards.length >= batchEvery) {
-      //console.log("saving batch");
-
-      this.pushGradients(this.allGradients, this.curGradients);
-      this.allRewards.push(this.curRewards);
-
-      this.curRewards = [];
-      this.curGradients = [];
+    if (this.nTurn > 0) {
+      this.curRewards.push(lastReward);
     }
-    return { action, trained };
+
+    //this.actionHistory = this.actionHistory || [];
+    //this.actionHistory.push(actions);
+
+    this.nTurn++;
+
+    const trained = false;
+    return { actions, trained };
   }
 
   decreaseLearningRate(factor = 0.7) {
@@ -94,10 +100,9 @@ class PolicyNetwork {
   }
 
   endEpisode(endBonus = 0) {
-    //console.log("saving batch");
-    if (this.lastInputVector) {
-      this.push(this.lastInputVector, endBonus);
-    }
+    this.curRewards.push(endBonus);
+
+    this.nEpisodes++;
 
     this.pushGradients(this.allGradients, this.curGradients);
     this.allRewards.push(this.curRewards);
@@ -105,26 +110,33 @@ class PolicyNetwork {
     this.curRewards = [];
     this.curGradients = [];
 
-    console.log("training, episode end");
-    tf.tidy(() => {
-      const normalizedRewards =
-          discountAndNormalizeRewards(this.allRewards, this.discountRate);
+    console.log(`training, episode ${this.nEpisodes} end`);
+    //console.log(this.actionHistory.map(a => a[0]));
+    //console.log(this.actionHistory.map(a => a[0]).reduce((a,b) => a + b) / this.actionHistory.length);
+    this.typicalRewards = tf.tidy(() => {
+      const { normalized, typicalRewards } =
+          discountAndNormalizeRewards(this.allRewards, this.discountRate, this.typicalRewards);
+      //console.log({reward: normalized[0].dataSync(), typical: typicalRewards.dataSync() });
+      //console.log({reward: normalized[0].dataSync() });
       this.optimizer.applyGradients(
-          scaleAndAverageGradients(this.allGradients, normalizedRewards));
+          scaleAndAverageGradients(this.allGradients, normalized));
+      return typicalRewards;
     });
+
     tf.dispose(this.allGradients);
     this.allGradients = [];
     this.allRewards = [];
+    //this.actionHistory = [];
+    this.nTurn = 0;
   }
 
   getGradientsAndSaveActions(inputTensor) {
     const f = () => tf.tidy(() => {
-      const [logits, actions] = this.getLogitsAndActions(inputTensor);
+      const [means, actions] = this.getMeansAndActions(inputTensor);
       this.currentActions_ = actions.dataSync();
-
-      const labels = tf.oneHot(this.currentActions_, this.nOutputs);
-      // see https://github.com/simoninithomas/Deep_reinforcement_learning_Course/blob/master/Policy%20Gradients/Doom/Doom%20REINFORCE%20Monte%20Carlo%20Policy%20gradients.ipynb
-      return tf.losses.softmaxCrossEntropy(labels, logits).asScalar();
+      const coeff = this.nOutputs * Math.pow(this.gaussianStdev, -2.0);
+      //return tf.mul(tf.losses.meanSquaredError(means, actions), coeff).asScalar();
+      return tf.sum(tf.mul(coeff, tf.squaredDifference(this.currentActions_, means))).asScalar();
     });
     return tf.variableGrads(f);
   }
@@ -133,37 +145,26 @@ class PolicyNetwork {
     return this.currentActions_;
   }
 
-  /**
-   * Get policy-network logits and the action based on state-tensor inputs.
-   *
-   * @param {tf.Tensor} inputs A tf.Tensor instance of shape `[batchSize, nInputs]`.
-   * @returns {[tf.Tensor, tf.Tensor]}
-   *   1. The logits tensor, of shape `[batchSize, 1]`.
-   *   2. The actions tensor, of shape `[batchSize, 1]`.
-   */
-  getLogitsAndActions(inputs) {
+  getMeansAndActions(inputs) {
     return tf.tidy(() => {
-      const logits = this.policyNet.predict(inputs);
-      const action_probs = tf.softmax(logits);
-      const actions = tf.multinomial(action_probs, 1, null, true);
-      return [logits, actions];
+      const means = this.policyNet.predict(inputs);
+      const actions = tf.add(means, tf.mul(tf.randomNormal(means.shape), this.gaussianStdev));
+      return [means, actions];
     });
   }
 
   /**
    * Get actions based on a state-tensor input.
-   *
-   * @param {tf.Tensor} inputs A tf.Tensor instance of shape `[batchSize, nInputs]`.
-   * @param {Float32Array} inputs The actions for the inputs, with length
-   *   `batchSize`.
+   * If deterministic, skips the stochastic part in the policy and returns
+   * the mean
    */
-  getActions(inputs) {
-    return this.getLogitsAndActions(inputs)[1].dataSync();
+  getActions(inputs, deterministic = true) {
+    return this.getMeansAndActions(inputs)[deterministic ? 0 : 1].dataSync();
   }
 
-  getAction(input) {
+  getAction(input, deterministic = true) {
     return tf.tidy(() => {
-      return this.getActions(tf.tensor2d([input]))[0];
+      return this.actionsAsArray(this.getActions(tf.tensor2d([input])));
     });
   }
 
@@ -221,19 +222,48 @@ function discountRewards(rewards, discountRate) {
  * @returns {tf.Tensor[]} The discounted and normalize reward values as an
  *   Array of tf.Tensor.
  */
-function discountAndNormalizeRewards(rewardSequences, discountRate) {
+function discountAndNormalizeRewards(rewardSequences, discountRate, typicalRewards = null, bias = 0) {
   return tf.tidy(() => {
     const discounted = [];
-    for (const sequence of rewardSequences) {
-      discounted.push(discountRewards(sequence, discountRate));
+    let normalized;
+    if (this.rollingAverageRewardNormalization) {
+      let mean;
+      for (const sequence of rewardSequences) {
+        const cur = tf.add(discountRewards(sequence, discountRate), bias);
+        discounted.push(cur);
+        if (mean) {
+          mean = tf.add(mean, cur);
+        } else {
+          mean = cur;
+        }
+      }
+      mean = tf.mul(mean, 1.0/rewardSequences.length);
+
+      // Normalize the reward sequences using the mean and std.
+      let normalized = discounted;
+      if (typicalRewards) {
+        normalized = discounted.map(rs => rs.sub(typicalRewards));
+        const alpha = 0.1;
+        typicalRewards = tf.add(tf.mul(typicalRewards, 1.0 - alpha), tf.mul(mean, alpha));
+      } else {
+        typicalRewards = mean;
+      }
+
+      const max = tf.maximum(1e-6, tf.max(tf.abs(normalized[0])).asScalar());
+      normalized = normalized.map(n => n.div(max));
+    } else {
+      for (const sequence of rewardSequences) {
+        discounted.push(discountRewards(sequence, discountRate));
+      }
+      // Compute the overall mean and stddev.
+      const concatenated = tf.concat(discounted);
+      const mean = tf.mean(concatenated);
+      const std = tf.sqrt(tf.mean(tf.square(concatenated.sub(mean))));
+
+      // Normalize the reward sequences using the mean and std.
+      normalized = discounted.map(rs => rs.sub(mean).div(std));
     }
-    // Compute the overall mean and stddev.
-    const concatenated = tf.concat(discounted);
-    const mean = tf.mean(concatenated);
-    const std = tf.sqrt(tf.mean(tf.square(concatenated.sub(mean))));
-    // Normalize the reward sequences using the mean and std.
-    const normalized = discounted.map(rs => rs.sub(mean).div(std));
-    return normalized;
+    return { normalized, typicalRewards };
   });
 }
 

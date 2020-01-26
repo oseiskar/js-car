@@ -21,8 +21,8 @@ function OfflineTrainer(saveCallback, { networkOptions, trackData }) {
   function buildSteering(trackPoints, episodeTrack) {
     const agent = (inputs, reward) => {
       lastReward = reward;
-      const { action } = policyNetwork.push(inputs, reward);
-      return action;
+      const { actions } = policyNetwork.push(inputs, reward);
+      return actions;
     };
 
     const actualSteering = reinforcementLearningSteering(trackPoints, trackData.trackWidth, { agent });
@@ -94,7 +94,6 @@ function OfflineTrainer(saveCallback, { networkOptions, trackData }) {
     console.log(`Episode ${nEpisodes} reward ${totalReward} (${totalReward-endBonus} raw) (delta ${delta})`);
 
     visualizationTracks.push(episodeTrack.slice(0));
-
     policyNetwork.endEpisode(endBonus);
 
     if (delta < 1e-7 || negativeStreak > 10) {
