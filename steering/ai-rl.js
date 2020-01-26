@@ -1,15 +1,16 @@
 /* globals PolicyNetwork, pidControl, tf */
-function reinforcementLearningSteering(trackPoints, {
-  agent = null
+function reinforcementLearningSteering(trackPoints, trackWidth, {
+  agent = null,
 } = {}) {
   const { norm, normalize, argMax, distance } = MathHelpers;
 
   const velocityControl = pidControl({ p: 1.0 });
+  const angleControl = pidControl({ p: 1.0 });
   let nTurn = 0;
   let trainer;
   let version = 0;
   let visualizations;
-  let offlineMode = !!agent;
+  let currentCheckpointIndex = 0;
 
   function initAgent({ networkOptions, trackData }) {
     const network = new PolicyNetwork(networkOptions);
@@ -51,20 +52,23 @@ function reinforcementLearningSteering(trackPoints, {
     }
 
     const nearPoint = getTrackVectorsAt(2);
-    const farPoint = getTrackVectorsAt(10);
-
     const V_SCALE = 10.0;
     const DIST_SCALE = car.properties.length * 10.0;
     const fwd = car.getForwardDir();
     const curVelocity = car.getSpeed();
     const relWheelAngle = car.wheelAngle / car.properties.maxWheelAngle;
+    const anySlip = car.slip.front || car.slip.back;
 
     const inputs = [
       MathHelpers.cross2d(nearPoint.trackPointVector, nearPoint.trackDirection) / DIST_SCALE,
       MathHelpers.cross2d(nearPoint.trackDirection, fwd),
-      MathHelpers.cross2d(farPoint.trackDirection, fwd),
+      //MathHelpers.cross2d(getTrackVectorsAt(10).trackDirection, fwd),
+      MathHelpers.cross2d(getTrackVectorsAt(30).trackDirection, fwd),
       curVelocity / V_SCALE,
       relWheelAngle,
+      anySlip ? 1 : 0,
+      //car.pos[0] / DIST_SCALE,
+      //car.pos[1] / DIST_SCALE,
       //MathHelpers.cross2d(targetDirection, fwd),
       //targetDirection[0],
       //targetDirection[1],
@@ -74,28 +78,36 @@ function reinforcementLearningSteering(trackPoints, {
       //fwd[0],
       //fwd[1],
       //car.vrot,
-      //car.pos[0],
-      //car.pos[1],
-      //car.v[0] / V_SCALE,
-      //car.v[1] / V_SCALE,
-      //car.slip.front,
-      //car.slip.back
     ];
 
     //console.log(inputs);
 
     nTurn++;
 
+    let reward = 0;
+    if (currentCheckpointIndex === null)
+      currentCheckpointIndex = closestTrackPointIndex;
+
+    if (!car.offTrack) {
+      // main reward is the covered distance (on track) computed with this
+      // checkpoint mechanism
+      for (let j=0; j<10; ++j) {
+        if (closestTrackPointIndex == (currentCheckpointIndex + j) % trackPoints.length) {
+          currentCheckpointIndex = closestTrackPointIndex + 1;
+          reward += 100;
+          break;
+        }
+      }
+    }
+
     //const lastReward = -Math.abs(relWheelAngle);
     const dirDot = math.dot(nearPoint.trackDirection, fwd);
-    let lastReward = dirDot * curVelocity;
-    lastReward -= Math.abs(relWheelAngle) * 0.2;
-    if (car.collided) lastReward -= 10;
-    if (car.offTrack) lastReward -= 2;
-    if (dirDot < 0) lastReward -= 2;
-    /*lastReward -= trackDistance * 0.1;
-    //lastReward -= car.collidedTurns * 5;
-    if (dirDot < 0) lastReward -= 2;*/
+    reward -= Math.abs(relWheelAngle) * 0.2;
+    if (car.collided) reward -= 30;
+    if (car.offTrack) reward -= 0.5 * Math.pow(nearPoint.trackDistance / (trackWidth * 0.5), 2.0);
+    if (dirDot > 0) reward += 1;
+    if (dirDot < 0) reward -= 10;
+    if (car.slip.front || car.slip.back) reward -= 4;
 
     if (!agent) agent = initAgent({
       networkOptions: {
@@ -104,24 +116,28 @@ function reinforcementLearningSteering(trackPoints, {
       },
       trackData: {
         trackPoints,
+        trackWidth,
         car: {
           pos: car.pos
         }
       }
     });
-    const action = agent(inputs, lastReward);
+    const action = agent(inputs, reward);
 
-    //if (nTurn % 10 == 0) LOG_SOME({action, lastReward, wheelAnglePenalty, trackDistance, inputs});
-    //const [ throttle, wheelTurnSpeed ] = action;
+    const targetWheelAngle = ((action % 2) === 1 ? -1 : 1) * car.properties.maxWheelAngle;
+    let wheelTurnSpeed = angleControl(targetWheelAngle - car.wheelAngle, dt);
 
-    // simple steering model
-    const curTargetVelocity = 3.0;
-    const throttle = car.slip.back ? 0.0 : velocityControl(curTargetVelocity - curVelocity, dt);
-    const wheelTurnSpeed = (action == 1 ? 1 : -1);
-
+    // "slow" or "fast"
+    let targetVelocity = (action < 2) ? 10.0 : 1.0;
+    if (action < 2) {
+      if (!anySlip) wheelTurnSpeed *= 0.3;
+      targetVelocity = 10.0;
+    } else {
+      targetVelocity = 1.0;
+    }
     return {
-      throttle: throttle,
-      wheelTurnSpeed: wheelTurnSpeed * car.properties.wheelTurnSpeed
+      throttle: car.slip.back ? 0 : velocityControl(targetVelocity, dt),
+      wheelTurnSpeed
     };
   };
 

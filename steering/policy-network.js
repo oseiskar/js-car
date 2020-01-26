@@ -25,9 +25,10 @@ class PolicyNetwork {
    * Create the underlying model of this policy network.
    */
   constructor({ inputs, outputs = 1 } = {}) {
-    const hiddenLayerSizes = [6];
-    const learningRate = 0.05;
-    this.discountRate = 0.995;
+    const hiddenLayerSizes = [6, 4];
+    this.learningRate = 0.07;
+    this.discountRate = 0.998;
+    this.nOutputs = 4;
 
     this.policyNet = tf.sequential();
     hiddenLayerSizes.forEach((hiddenLayerSize, i) => {
@@ -38,10 +39,8 @@ class PolicyNetwork {
         inputShape: i === 0 ? [inputs] : undefined
       }));
     });
-    // TODO
-    // The last layer has only one unit. The single output number will be
-    // converted to a probability of selecting the leftward-force action.
-    this.policyNet.add(tf.layers.dense({units: 1}));
+    // Logits for each possible action
+    this.policyNet.add(tf.layers.dense({units: this.nOutputs}));
 
     this.allGradients = [];
     this.allRewards = [];
@@ -49,7 +48,7 @@ class PolicyNetwork {
     this.curGradients = [];
     this.curRewards = [];
 
-    this.optimizer = tf.train.adam(learningRate);
+    this.optimizer = tf.train.adam(this.learningRate);
   }
   /**
    * Create the underlying model of this policy network.
@@ -61,6 +60,7 @@ class PolicyNetwork {
   push(inputVector, lastReward) {
 
     const batchEvery = 200;
+    this.lastInputVector = inputVector;
 
     // For every step of the game, remember gradients of the policy
     // network's weights with respect to the probability of the action
@@ -88,8 +88,16 @@ class PolicyNetwork {
     return { action, trained };
   }
 
-  endEpisode() {
+  decreaseLearningRate(factor = 0.7) {
+    this.learningRate *= factor;
+    this.optimizer = tf.train.adam(this.learningRate);
+  }
+
+  endEpisode(endBonus = 0) {
     //console.log("saving batch");
+    if (this.lastInputVector) {
+      this.push(this.lastInputVector, endBonus);
+    }
 
     this.pushGradients(this.allGradients, this.curGradients);
     this.allRewards.push(this.curRewards);
@@ -113,9 +121,10 @@ class PolicyNetwork {
     const f = () => tf.tidy(() => {
       const [logits, actions] = this.getLogitsAndActions(inputTensor);
       this.currentActions_ = actions.dataSync();
-      const labels =
-          tf.sub(1, tf.tensor2d(this.currentActions_, actions.shape));
-      return tf.losses.sigmoidCrossEntropy(labels, logits).asScalar();
+
+      const labels = tf.oneHot(this.currentActions_, this.nOutputs);
+      // see https://github.com/simoninithomas/Deep_reinforcement_learning_Course/blob/master/Policy%20Gradients/Doom/Doom%20REINFORCE%20Monte%20Carlo%20Policy%20gradients.ipynb
+      return tf.losses.softmaxCrossEntropy(labels, logits).asScalar();
     });
     return tf.variableGrads(f);
   }
@@ -135,12 +144,8 @@ class PolicyNetwork {
   getLogitsAndActions(inputs) {
     return tf.tidy(() => {
       const logits = this.policyNet.predict(inputs);
-
-      // Get the probability of the leftward action.
-      const leftProb = tf.sigmoid(logits);
-      // Probabilites of the left and right actions.
-      const leftRightProbs = tf.concat([leftProb, tf.sub(1, leftProb)], 1);
-      const actions = tf.multinomial(leftRightProbs, 1, null, true);
+      const action_probs = tf.softmax(logits);
+      const actions = tf.multinomial(action_probs, 1, null, true);
       return [logits, actions];
     });
   }

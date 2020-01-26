@@ -93,19 +93,20 @@ function buildAiVisualizer(coords, visualizationGenerator, scale) {
 
     return (data) => {
       group.selectAll('g').remove();
+
       group.selectAll('g')
-        .data(data.traces)
+        .data(data.traces.current.concat(data.traces.best))
         .enter()
         .append('g')
         .selectAll('circle')
-        .data(d => stride(4)(d))
+        .data((d, idx) => stride(4)(d).map(p => ({ x: p[0], y: p[1], reward: p[2], idx })))
         .enter()
         .append('circle')
-        .attr('cx', d => d[0])
-        .attr('cy', d => d[1])
+        .attr('cx', p => p.x)
+        .attr('cy', p => p.y)
         .attr('r', 2.0 / scale)
         .attr('fill-opacity', 0.25)
-        .attr('fill', d => rewardColormap(d[2]));
+        .attr('fill', p => p.idx == 0 ? rewardColormap(p.reward) : 'gray');
     };
   }
 
