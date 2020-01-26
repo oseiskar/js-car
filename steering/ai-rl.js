@@ -11,7 +11,6 @@ function reinforcementLearningSteering(trackPoints, trackWidth, {
   let version = 0;
   let visualizations;
   let currentCheckpointIndex = 0;
-  //const online = !agent;
 
   function initAgent({ networkOptions, trackData }) {
     const network = new PolicyNetwork(networkOptions);
@@ -29,8 +28,11 @@ function reinforcementLearningSteering(trackPoints, trackWidth, {
       });
     };
 
-    return function (inputs, lastReward) {
-      trainer.postMessage({ inputs, lastReward });
+    return function (inputs, lastReward, car) {
+      if (nTurn % 100 == 0) {
+          const { pos, v, rot, wheelAngle, slip, vrot } = car;
+          trainer.postMessage({ car: { pos, v, rot, wheelAngle, slip, vrot }})
+      }
       const deterministic = false;
       return network.getAction(inputs, deterministic);
     };
@@ -87,10 +89,10 @@ function reinforcementLearningSteering(trackPoints, trackWidth, {
     nTurn++;
 
     let reward = 0;
-    if (currentCheckpointIndex === null)
-      currentCheckpointIndex = closestTrackPointIndex;
-
     if (!car.offTrack) {
+      if (currentCheckpointIndex === null)
+        currentCheckpointIndex = closestTrackPointIndex;
+
       // main reward is the covered distance (on track) computed with this
       // checkpoint mechanism
       for (let j=0; j<10; ++j) {
@@ -107,11 +109,13 @@ function reinforcementLearningSteering(trackPoints, trackWidth, {
     const dirDot = math.dot(nearPoint.trackDirection, car.v);
     reward -= Math.abs(relWheelAngle) * 0.2;
     if (car.collided) reward -= 30;
-    if (car.offTrack) reward -= 2;
+    if (car.offTrack) {
+      reward -= nearPoint.trackDistance / trackWidth * 2;
+    }
     if (dirDot > 0) reward += dirDot;
     if (dirDot < 0) reward -= 10;
     if (math.dot(car.v, fwd) < 0) reward -= 10; // no reverse
-    if (car.slip.front || car.slip.back) reward -= 4;
+    if (anySlip) reward -= 4;
 
     if (!agent) agent = initAgent({
       networkOptions: {
@@ -126,7 +130,8 @@ function reinforcementLearningSteering(trackPoints, trackWidth, {
         }
       }
     });
-    const actions = agent(inputs, reward);
+
+    const actions = agent(inputs, reward, car);
     //if (!online) console.log({actions});
     //if (online && nTurn % 100 == 0) console.log(actions);
     //if (!online && nTurn == 2) console.log({offline: actions});

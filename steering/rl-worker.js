@@ -39,23 +39,32 @@ function OfflineTrainer(saveCallback, { networkOptions, trackData }) {
   let bestModelData;
   const track = new Track({ trackPoints: trackData.trackPoints });
   let episodeTrack = [];
-  let steering;
   let lastTotalReward = 0;
   let negativeStreak = 0;
+  let lastOnlineState = { pos: [0, 0] };
+
+  this.setLastOnlineState = function (state) { lastOnlineState = state; };
 
   function trainEpisode() {
     nEpisodes++;
     const { trackPoints, car } = trackData;
+
+    let totalReward = 0;
+    const startOffroad = (nEpisodes % 10) == 9;
+
+    track.cars = [];
+    const steering = buildSteering(trackPoints, episodeTrack);
+    track.addCar(steering);
+    if (startOffroad) {
+      Object.entries(lastOnlineState).forEach(([key, value]) => {
+        track.cars[0].model[key] = value;
+      });
+    }
+    policyNetwork.rollingAverageRewardNormalization = !startOffroad;
+
     episodeTrack.length = 0; // clear
 
-    if (!steering) {
-      track.cars = [];
-      steering = buildSteering(trackPoints, episodeTrack);
-      track.addCar(steering);
-    }
-
     const maxSteps = 1000;
-    let totalReward = 0;
     let negativeRewardStreak = 0;
     let i;
     let endBonus = 0;
@@ -63,7 +72,7 @@ function OfflineTrainer(saveCallback, { networkOptions, trackData }) {
       track.move();
       totalReward += lastReward;
 
-      if (lastReward < 0) {
+      if (lastReward < 0 && !startOffroad) {
         negativeRewardStreak++;
       } else {
         negativeRewardStreak = 0;
@@ -80,23 +89,23 @@ function OfflineTrainer(saveCallback, { networkOptions, trackData }) {
 
     // reset on failure
     if (i < maxSteps) endBonus -= (maxSteps - i) * 10;
-    steering = null;
-
-    if (totalReward < 0 && bestTotal > 0) {
-      negativeStreak++;
-    } else {
-      negativeStreak = 0;
-    }
 
     totalReward += endBonus;
-    const delta = Math.abs(lastTotalReward - totalReward);
-    lastTotalReward = totalReward;
-    console.log(`Episode ${nEpisodes} reward ${totalReward} (${totalReward-endBonus} raw) (delta ${delta})`);
 
     visualizationTracks.push(episodeTrack.slice(0));
     policyNetwork.endEpisode(endBonus);
 
-    if (delta < 1e-7 || negativeStreak > 10) {
+    const delta = lastTotalReward - totalReward;
+    console.log(`Episode ${nEpisodes} reward ${totalReward} (delta ${delta})`);
+    lastTotalReward = totalReward;
+
+    if (totalReward < 0 && bestTotal > 0) {
+      negativeStreak++;
+    } else {
+      if (!startOffroad) negativeStreak = 0;
+    }
+
+    if (!startOffroad && Math.abs(delta) < 1e-7 || negativeStreak > 10) {
       negativeStreak = 0;
       console.warn('training in a bad place, restoring best known model');
       tf.loadLayersModel({
@@ -111,7 +120,7 @@ function OfflineTrainer(saveCallback, { networkOptions, trackData }) {
       });
     }
 
-    const wasBest = totalReward > bestTotal || !bestModelData;
+    const wasBest = !startOffroad && (totalReward > bestTotal || !bestModelData);
     const curVisualizationTracks = visualizationTracks;
     visualizationTracks = [];
     policyNetwork.policyNet.save({
@@ -141,9 +150,12 @@ function OfflineTrainer(saveCallback, { networkOptions, trackData }) {
 
 let trainer;
 onmessage = function (e) {
-  const initData = e.data.initialize;
-  if (initData) {
+  const { initialize, car } = e.data;
+  if (initialize) {
     // console.log(initData);
-    trainer = new OfflineTrainer(postMessage, initData);
+    trainer = new OfflineTrainer(postMessage, initialize);
+  } else if (car) {
+    trainer.setLastOnlineState(car);
   }
+
 };
