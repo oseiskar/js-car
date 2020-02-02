@@ -94,12 +94,13 @@ function buildAiVisualizer(coords, visualizationGenerator, scale) {
     return (data) => {
       group.selectAll('g').remove();
 
+      const STRIDE = 1; //4
       group.selectAll('g')
         .data(data.traces.current.concat(data.traces.best))
         .enter()
         .append('g')
         .selectAll('circle')
-        .data((d, idx) => stride(4)(d).map(p => ({ x: p[0], y: p[1], reward: p[2], idx })))
+        .data((d, idx) => stride(STRIDE)(d).map(p => ({ x: p[0], y: p[1], reward: p[2], idx })))
         .enter()
         .append('circle')
         .attr('cx', p => p.x)

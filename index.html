@@ -30,7 +30,7 @@ track.addCar(manualSteering(), 'You');
 track.addCar(plannedVelocityRubberBandPidSteering(
   track.points, track.trackWidth, track.cars[0].model.properties),
   'Planned-route PID');
-track.addCar(reinforcementLearningSteering(track.points, track.trackWidth, track.size), 'RL (tf.js)');
+track.addCar(reinforcementLearningSteering(track.points, track.trackWidth, track.size), 'ANN (tf.js)');
 
 const svg = d3.select('svg');
 const renderer = buildTrackRenderer(track, svg,

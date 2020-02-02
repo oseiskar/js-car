@@ -22,7 +22,7 @@ function SupervisedTrainer(saveCallback, { networkOptions, trackData }) {
   const { trackPoints, trackWidth, trackSize } = trackData;
   const referenceSteering = pidSteering(trackPoints);
   const track = new Track({ trackPoints });
-  let lastOnlineState;
+  const onlineStateBuffer = [];
 
   function collectPidEpisode(length) {
     const { trackPoints, car } = trackData;
@@ -53,11 +53,10 @@ function SupervisedTrainer(saveCallback, { networkOptions, trackData }) {
     track.cars = [];
     track.addCar(buildSteering());
     const mycar = track.cars[0].model;
-    if (lastOnlineState) {
-      Object.entries(lastOnlineState).forEach(([key, value]) => {
+    if (onlineStateBuffer.length > 0) {
+      Object.entries(onlineStateBuffer.shift()).forEach(([key, value]) => {
         mycar[key] = value;
       });
-      lastOnlineState = null;
     } else {
       const margin = 0.95;
       const rnd = () => (Math.random() - 0.5) * 2.0;
@@ -92,35 +91,59 @@ function SupervisedTrainer(saveCallback, { networkOptions, trackData }) {
 
   let epochIdx = 0;
 
-  let allInput = [];
-  let allOutput = [];
+  let historyInput = [];
+  let historyOutput = [];
+  let historyVisualizations = [];
 
   function trainRound() {
-    if (epochIdx > 50) {
+    const MAX_EPOCHS = 100;
+    if (epochIdx > MAX_EPOCHS) {
       return;
     }
 
     console.log(`epoch ${epochIdx}`);
-    allInput = stride(2, false)(allInput);
-    allOutput = stride(2, false)(allOutput);
+    const inputs = [];
+    const outputs = [];
 
     const visualizationTracks = [];
-    const EPISODES_PER_ROUND = 10;
+    const concatVisus = [];
+
+    const EPISODES_PER_ROUND = 40;
+    const EPISODE_LENGTH = 60;
     for (let i = 0; i < EPISODES_PER_ROUND; ++i) {
-      const { networkInputs, referenceOutputs, episodeVisualization } = collectPidEpisode(400);
+      const { networkInputs, referenceOutputs, episodeVisualization } = collectPidEpisode(EPISODE_LENGTH);
       console.log(" - round collected");
-      const TRAIN_STRIDE = 3;
+      const TRAIN_STRIDE = 5;
+      const curVisu = [];
       for (let i = 0; i < networkInputs.length; i += TRAIN_STRIDE) {
-        allInput.push(networkInputs[i]);
-        allOutput.push(referenceOutputs[i]);
+        inputs.push(networkInputs[i]);
+        outputs.push(referenceOutputs[i]);
+        concatVisus.push(episodeVisualization[i]);
+        curVisu.push(episodeVisualization[i]);
       }
-      visualizationTracks.push(episodeVisualization);
+      visualizationTracks.push(curVisu);
     }
 
     //const [inShuffled, outShuffled] = shuffleTwoArrays(allInput, allOutput);
 
+    const allInput = inputs.concat(historyInput);
+    const allOutput = outputs.concat(historyOutput);
+
+    for (let i = 0; i < inputs.length*0.25; ++i) {
+      let idx = Math.round(Math.random()*(inputs.length-1));
+      historyInput.push(inputs[idx]);
+      historyOutput.push(outputs[idx]);
+      historyVisualizations.push(concatVisus[idx]);
+    }
+
+    while (historyOutput.length > inputs.length*3) {
+      let idx = Math.round(Math.random()*(historyOutput.length-1));
+      historyInput.splice(idx, 1);
+      historyOutput.splice(idx, 1);
+      historyVisualizations.splice(idx, 1);
+    }
+
     const model = policyNetwork.policyNet;
-      //console.log({allInput, allOutput});
 
     const ds = tf.data.zip({
       xs: tf.data.array(allInput),
@@ -137,16 +160,17 @@ function SupervisedTrainer(saveCallback, { networkOptions, trackData }) {
       });
     }).then(() => {
       console.log('epoch finished');
-      save(model, visualizationTracks.slice(0));
+      save(model, visualizationTracks.slice(0).concat([historyVisualizations]));
       setTimeout(trainRound, 10);
       epochIdx++;
     });
   }
 
-  this.setLastOnlineState = function (state) { lastOnlineState = state; };
+  this.setLastOnlineState = function (state) {
+    onlineStateBuffer.push(state);
+  };
 
   trainRound();
-
 }
 
 function OfflineTrainer(saveCallback, { networkOptions, trackData }) {

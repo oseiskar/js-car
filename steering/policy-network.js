@@ -26,7 +26,7 @@ class PolicyNetwork {
    */
   constructor({ inputs, outputs = 1 } = {}) {
     const hiddenLayerSizes = [6, 6, 6];
-    this.learningRate = 0.02;
+    this.learningRate = 0.05;
     this.discountRate = 0.99;
     this.nOutputs = 2;
     this.gaussianStdev = 0.3;

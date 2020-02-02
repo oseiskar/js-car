@@ -29,7 +29,7 @@ function reinforcementLearningSteering(trackPoints, trackWidth, trackSize, {
     };
 
     return function (inputs, lastReward, car) {
-      if (nTurn % 100 == 0) {
+      if (nTurn % 20 == 0) {
           const { pos, v, rot, wheelAngle, slip, vrot } = car;
           trainer.postMessage({ car: { pos, v, rot, wheelAngle, slip, vrot }})
       }
@@ -71,9 +71,9 @@ function reinforcementLearningSteering(trackPoints, trackWidth, trackSize, {
       curVelocity / V_SCALE,
       relWheelAngle,
       anySlip ? 1 : 0,
-      nearPoint.trackDistance < trackWidth * 0.5 ? 1 : 0
-      //car.pos[0] / DIST_SCALE,
-      //car.pos[1] / DIST_SCALE,
+      nearPoint.trackDistance < trackWidth * 0.5 ? 1 : 0,
+      car.pos[0] / DIST_SCALE,
+      car.pos[1] / DIST_SCALE
       //MathHelpers.cross2d(targetDirection, fwd),
       //targetDirection[0],
       //targetDirection[1],
