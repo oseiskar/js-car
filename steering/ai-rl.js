@@ -1,5 +1,5 @@
 /* globals PolicyNetwork, pidControl, tf */
-function reinforcementLearningSteering(trackPoints, trackWidth, {
+function reinforcementLearningSteering(trackPoints, trackWidth, trackSize, {
   agent = null,
 } = {}) {
   const { norm, normalize, argMax, distance } = MathHelpers;
@@ -71,6 +71,7 @@ function reinforcementLearningSteering(trackPoints, trackWidth, {
       curVelocity / V_SCALE,
       relWheelAngle,
       anySlip ? 1 : 0,
+      nearPoint.trackDistance < trackWidth * 0.5 ? 1 : 0
       //car.pos[0] / DIST_SCALE,
       //car.pos[1] / DIST_SCALE,
       //MathHelpers.cross2d(targetDirection, fwd),
@@ -125,6 +126,7 @@ function reinforcementLearningSteering(trackPoints, trackWidth, {
       trackData: {
         trackPoints,
         trackWidth,
+        trackSize,
         car: {
           pos: car.pos
         }

@@ -25,8 +25,8 @@ class PolicyNetwork {
    * Create the underlying model of this policy network.
    */
   constructor({ inputs, outputs = 1 } = {}) {
-    const hiddenLayerSizes = [4];
-    this.learningRate = 0.1;
+    const hiddenLayerSizes = [6, 6, 6];
+    this.learningRate = 0.02;
     this.discountRate = 0.99;
     this.nOutputs = 2;
     this.gaussianStdev = 0.3;
