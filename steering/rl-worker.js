@@ -40,7 +40,7 @@ function OfflineTrainer(saveCallback, { networkOptions, trackData }) {
   const track = new Track({ trackPoints: trackData.trackPoints });
   let episodeTrack = [];
   let lastTotalReward = 0;
-  let negativeStreak = 0;
+  let badStreak = 0;
   let lastOnlineState = { pos: [0, 0] };
 
   this.setLastOnlineState = function (state) { lastOnlineState = state; };
@@ -50,7 +50,8 @@ function OfflineTrainer(saveCallback, { networkOptions, trackData }) {
     const { trackPoints, car } = trackData;
 
     let totalReward = 0;
-    const startOffroad = (nEpisodes % 10) == 9;
+    const offTrackEvery = bestTotal > 0 ? 3 : 10;
+    const startOffroad = (nEpisodes % offTrackEvery) == offTrackEvery - 1;
 
     track.cars = [];
     const steering = buildSteering(trackPoints, episodeTrack);
@@ -89,6 +90,7 @@ function OfflineTrainer(saveCallback, { networkOptions, trackData }) {
 
     // reset on failure
     if (i < maxSteps) endBonus -= (maxSteps - i) * 10;
+    const badPlace = i < 200;
 
     totalReward += endBonus;
 
@@ -96,17 +98,19 @@ function OfflineTrainer(saveCallback, { networkOptions, trackData }) {
     policyNetwork.endEpisode(endBonus);
 
     const delta = lastTotalReward - totalReward;
-    console.log(`Episode ${nEpisodes} reward ${totalReward} (delta ${delta})`);
+    console.log(`Episode ${nEpisodes}, ${i}/${maxSteps} steps, reward ${totalReward} (delta ${delta})`);
     lastTotalReward = totalReward;
 
-    if (totalReward < 0 && bestTotal > 0) {
-      negativeStreak++;
-    } else {
-      if (!startOffroad) negativeStreak = 0;
+    if (!startOffroad) {
+      if (badPlace) {
+        badStreak++;
+      } else {
+        badStreak = 0;
+      }
     }
 
-    if (!startOffroad && Math.abs(delta) < 1e-7 || negativeStreak > 10) {
-      negativeStreak = 0;
+    if (!startOffroad && Math.abs(delta) < 1e-7 || badStreak > 10) {
+      badStreak = 0;
       console.warn('training in a bad place, restoring best known model');
       tf.loadLayersModel({
         // load using a trivial tf-js LoadHandler interface
